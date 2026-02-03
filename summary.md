@@ -8,7 +8,7 @@ Este documento resume el estado actual de la implementacion de Dito Editor. Para
 - Barra de estado con indicadores de Git y accesos a herramientas.
 
 ## Workspace
-- Selector de workspace con dialogo nativo de Finder (default en `/workspace`).
+- Selector de workspace con dialogo nativo de Finder que permite cualquier unidad.
 - Estado persistente en store local para mostrar la ruta activa.
 - Accion para revelar archivos o carpeta en Finder.
 

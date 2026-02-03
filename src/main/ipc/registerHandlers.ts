@@ -6,7 +6,6 @@ export const registerIpcHandlers = () => {
   ipcMain.handle('workspace:select', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory'],
-      defaultPath: '/workspace',
     })
 
     if (result.canceled) {
