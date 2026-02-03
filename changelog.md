@@ -9,3 +9,4 @@
 - Ajustes de pruebas Cypress para asegurar flujos completos.
 - Se agrego el script `cy:run:dev` para levantar el renderer y correr Cypress.
 - Se habilito seleccionar workspaces desde cualquier unidad.
+- Export PDF ahora permite elegir destino para archivo, carpeta y proyecto.

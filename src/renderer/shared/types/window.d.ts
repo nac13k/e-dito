@@ -6,7 +6,9 @@ declare global {
       ping: () => Promise<string>
       selectWorkspace: () => Promise<string | null>
       revealInFinder: (path: string) => Promise<void>
-      exportPdf: (payload: { title: string; markdown: string }) => Promise<string>
+      exportPdfFile: (payload: { title: string; markdown: string }) => Promise<string>
+      exportPdfFolder: () => Promise<string>
+      exportPdfProject: () => Promise<string>
       loadTheme: () => Promise<{
         mode: 'light' | 'dark'
         colors: Record<string, string>

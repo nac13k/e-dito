@@ -86,7 +86,9 @@ describe('Epica 01 - funcionalidad basica', () => {
     cy.window().then((win) => {
       win.api = {
         ...win.api,
-        exportPdf: () => Promise.resolve('PDF exportado: Documento'),
+        exportPdfFile: () => Promise.resolve('PDF exportado: Documento'),
+        exportPdfFolder: () => Promise.resolve('Carpeta exportada: Workspace'),
+        exportPdfProject: () => Promise.resolve('Proyecto exportado: Workspace'),
       }
     })
     runCommand('open-export')
@@ -94,14 +96,16 @@ describe('Epica 01 - funcionalidad basica', () => {
     cy.get('[data-testid="export-file"]').click()
     cy.get('[data-testid="export-status"]').should('contain', 'PDF exportado: Documento')
     cy.get('[data-testid="export-folder"]').click()
-    cy.get('[data-testid="export-status"]').should('contain', 'Carpeta exportada')
+    cy.get('[data-testid="export-status"]').should('contain', 'Carpeta exportada: Workspace')
+    cy.get('[data-testid="export-project"]').click()
+    cy.get('[data-testid="export-status"]').should('contain', 'Proyecto exportado: Workspace')
   })
 
   it('permite buscar comandos por alias', () => {
     cy.window().then((win) => {
       win.api = {
         ...win.api,
-        exportPdf: () => Promise.resolve('PDF exportado: Documento'),
+        exportPdfFile: () => Promise.resolve('PDF exportado: Documento'),
       }
     })
     openPalette()

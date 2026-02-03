@@ -23,8 +23,8 @@ Este documento resume el estado actual de la implementacion de Dito Editor. Para
 - Sincronizacion de scroll entre editor y preview.
 
 ## Export
-- Export PDF con status y accion en panel lateral.
-- Mensajes de estado para exportacion de archivo y carpeta.
+- Export PDF con seleccion de destino para archivo, carpeta y proyecto.
+- Mensajes de estado reflejan el resultado de la exportacion.
 
 ## Git
 - Panel de estado basico con accion de sincronizacion.

@@ -76,12 +76,18 @@ describe('Epica 01 - flujos completos', () => {
   })
 
   it('usa comandos para abrir tools, exportar y sincronizar git', () => {
+    cy.window().then((win) => {
+      win.api = {
+        ...win.api,
+        exportPdfFile: () => Promise.resolve('PDF exportado: Documento'),
+      }
+    })
     runCommand('open-export')
     cy.contains('PDF Autocontenido').should('be.visible')
 
     runCommand('export-pdf')
     cy.get('[data-testid="tool-export"]').click()
-    cy.get('[data-testid="export-status"]').should('contain', 'PDF exportado')
+    cy.get('[data-testid="export-status"]').should('contain', 'PDF exportado: Documento')
 
     runCommand('open-git')
     cy.get('[data-testid="git-sync"]').should('be.visible')

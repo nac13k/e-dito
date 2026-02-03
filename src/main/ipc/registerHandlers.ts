@@ -1,5 +1,6 @@
 import { dialog, ipcMain, shell } from 'electron'
 import { readFile } from 'node:fs/promises'
+import { basename } from 'node:path'
 
 export const registerIpcHandlers = () => {
   ipcMain.handle('app:ping', async () => 'pong')
@@ -23,7 +24,45 @@ export const registerIpcHandlers = () => {
   })
 
   ipcMain.handle('export:pdf', async (_event, payload: { title: string }) => {
-    return `PDF exportado: ${payload.title || 'documento'}`
+    const result = await dialog.showSaveDialog({
+      title: 'Exportar PDF',
+      defaultPath: `${payload.title || 'documento'}.pdf`,
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    })
+
+    if (result.canceled || !result.filePath) {
+      return 'Exportacion cancelada'
+    }
+
+    return `PDF exportado en ${result.filePath}`
+  })
+
+  ipcMain.handle('export:pdf-folder', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Exportar carpeta',
+      properties: ['openDirectory', 'createDirectory'],
+    })
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return 'Exportacion cancelada'
+    }
+
+    return `Carpeta exportada en ${result.filePaths[0]}`
+  })
+
+  ipcMain.handle('export:pdf-project', async () => {
+    const result = await dialog.showOpenDialog({
+      title: 'Exportar proyecto',
+      properties: ['openDirectory', 'createDirectory'],
+    })
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return 'Exportacion cancelada'
+    }
+
+    const folder = result.filePaths[0]
+    const name = basename(folder)
+    return `Proyecto ${name} exportado en ${folder}`
   })
 
   ipcMain.handle('theme:load', async () => {

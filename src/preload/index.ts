@@ -6,8 +6,12 @@ const api = {
     ipcRenderer.invoke('workspace:select') as Promise<string | null>,
   revealInFinder: (path: string) =>
     ipcRenderer.invoke('workspace:reveal', path) as Promise<void>,
-  exportPdf: (payload: { title: string; markdown: string }) =>
+  exportPdfFile: (payload: { title: string; markdown: string }) =>
     ipcRenderer.invoke('export:pdf', payload) as Promise<string>,
+  exportPdfFolder: () =>
+    ipcRenderer.invoke('export:pdf-folder') as Promise<string>,
+  exportPdfProject: () =>
+    ipcRenderer.invoke('export:pdf-project') as Promise<string>,
   loadTheme: () => ipcRenderer.invoke('theme:load') as Promise<{
     mode: 'light' | 'dark'
     colors: Record<string, string>

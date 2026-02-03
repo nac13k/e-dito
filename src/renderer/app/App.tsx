@@ -127,8 +127,8 @@ const App = () => {
   }
 
   const handleExportFile = async () => {
-    if (window.api?.exportPdf) {
-      const response = await window.api.exportPdf({
+    if (window.api?.exportPdfFile) {
+      const response = await window.api.exportPdfFile({
         title: 'Documento',
         markdown,
       })
@@ -139,8 +139,24 @@ const App = () => {
     setExportStatus('PDF exportado')
   }
 
-  const handleExportFolder = () => {
+  const handleExportFolder = async () => {
+    if (window.api?.exportPdfFolder) {
+      const response = await window.api.exportPdfFolder()
+      setExportStatus(response)
+      return
+    }
+
     setExportStatus('Carpeta exportada')
+  }
+
+  const handleExportProject = async () => {
+    if (window.api?.exportPdfProject) {
+      const response = await window.api.exportPdfProject()
+      setExportStatus(response)
+      return
+    }
+
+    setExportStatus('Proyecto exportado')
   }
 
   const handleSync = () => {
@@ -354,6 +370,20 @@ const App = () => {
       aliases: ['pdf', 'exportar documento'],
       onRun: () => void handleExportFile(),
     },
+    {
+      id: 'export-folder',
+      label: 'Exportar carpeta',
+      category: 'Export',
+      aliases: ['carpeta', 'exportar carpeta'],
+      onRun: () => void handleExportFolder(),
+    },
+    {
+      id: 'export-project',
+      label: 'Exportar proyecto',
+      category: 'Export',
+      aliases: ['proyecto', 'exportar proyecto'],
+      onRun: () => void handleExportProject(),
+    },
   ]
 
   return (
@@ -508,6 +538,7 @@ const App = () => {
               status={exportStatus}
               onExportFile={handleExportFile}
               onExportFolder={handleExportFolder}
+              onExportProject={handleExportProject}
             />
           )}
         </div>

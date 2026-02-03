@@ -1,4 +1,4 @@
-import { FileDown, Files } from 'lucide-react'
+import { FileDown, Files, FolderDown } from 'lucide-react'
 
 import { Button } from '@/shared/ui/button'
 
@@ -6,9 +6,15 @@ type ExportPanelProps = {
   status: string
   onExportFile: () => void
   onExportFolder: () => void
+  onExportProject: () => void
 }
 
-export const ExportPanel = ({ status, onExportFile, onExportFolder }: ExportPanelProps) => {
+export const ExportPanel = ({
+  status,
+  onExportFile,
+  onExportFolder,
+  onExportProject,
+}: ExportPanelProps) => {
   return (
     <section className="flex flex-col gap-4 rounded-3xl border border-canvas-200 bg-white/70 p-4 shadow-soft">
       <header>
@@ -32,6 +38,10 @@ export const ExportPanel = ({ status, onExportFile, onExportFolder }: ExportPane
         <Button data-testid="export-folder" variant="outline" onClick={onExportFolder}>
           <Files size={16} />
           Exportar carpeta
+        </Button>
+        <Button data-testid="export-project" variant="ghost" onClick={onExportProject}>
+          <FolderDown size={16} />
+          Exportar proyecto
         </Button>
       </div>
     </section>
