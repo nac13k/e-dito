@@ -1,0 +1,17 @@
+{
+  "mode": "dark",
+  "colors": {
+    "canvas": "#0f1114",
+    "ink": "#e7eaee",
+    "accent": "#8fb3c9",
+    "sidebar": "#11151a",
+    "editorBg": "#0f1114",
+    "previewBg": "#0f1114",
+    "border": "#1f252c",
+    "statusBg": "rgba(15, 17, 20, 0.92)",
+    "statusText": "#9aa7b2",
+    "markdownBg": "transparent",
+    "markdownText": "#e7eaee"
+  },
+  "mermaidTheme": "dark"
+}
