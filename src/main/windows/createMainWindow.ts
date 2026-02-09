@@ -20,6 +20,7 @@ export const createMainWindow = () => {
     minWidth: 980,
     minHeight: 640,
     backgroundColor: '#f7f3ef',
+    title: 'E-Dito',
     titleBarStyle: 'hiddenInset',
     webPreferences: {
       preload: getPreloadPath(),

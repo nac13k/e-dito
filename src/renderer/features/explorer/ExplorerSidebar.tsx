@@ -1,18 +1,40 @@
-import { ClipboardPaste, Copy, FileText, Folder, FolderOpen, FolderPlus, Search, Trash2 } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronRight,
+  ClipboardPaste,
+  Copy,
+  FileArchive,
+  FileAudio,
+  FileCode2,
+  FileImage,
+  FileText,
+  FileType2,
+  FileVideo,
+  Folder,
+  FolderOpen,
+  FolderPlus,
+  Search,
+  Trash2,
+  type LucideIcon,
+} from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 
 export type ExplorerFile = {
   id: string
   name: string
+  kind: 'markdown' | 'asset'
 }
 
 export type ExplorerFolder = {
   id: string
   name: string
+  parentId: string | null
+  depth: number
   files: ExplorerFile[]
 }
 
 type ExplorerSidebarProps = {
+  workspacePath: string | null
   folders: ExplorerFolder[]
   activeFileId: string | null
   onSelectFile: (id: string) => void
@@ -25,6 +47,7 @@ type ExplorerSidebarProps = {
 }
 
 export const ExplorerSidebar = ({
+  workspacePath,
   folders,
   activeFileId,
   onSelectFile,
@@ -40,6 +63,7 @@ export const ExplorerSidebar = ({
   const [menu, setMenu] = useState<{ open: boolean; x: number; y: number; target: string | null }>(
     { open: false, x: 0, y: 0, target: null }
   )
+  const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({})
   const searchRef = useRef<HTMLInputElement>(null)
 
   const filteredFolders = useMemo(() => {
@@ -124,9 +148,61 @@ export const ExplorerSidebar = ({
     setMenu((current) => ({ ...current, open: false }))
   }
 
+  const toggleFolder = (folderId: string) => {
+    setCollapsedFolders((current) => ({
+      ...current,
+      [folderId]: !current[folderId],
+    }))
+  }
+
+  const foldersById = useMemo(
+    () => filteredFolders.reduce<Record<string, ExplorerFolder>>((acc, folder) => {
+      acc[folder.id] = folder
+      return acc
+    }, {}),
+    [filteredFolders]
+  )
+
+  const visibleFolders = useMemo(() => {
+    return filteredFolders.filter((folder) => {
+      let parentId = folder.parentId
+      while (parentId) {
+        if (collapsedFolders[parentId]) {
+          return false
+        }
+        parentId = foldersById[parentId]?.parentId ?? null
+      }
+      return true
+    })
+  }, [collapsedFolders, filteredFolders, foldersById])
+
+  const getFileVisual = (file: ExplorerFile): { Icon: LucideIcon; colorClass: string } => {
+    if (file.kind === 'markdown') {
+      return { Icon: FileText, colorClass: 'text-sky-500' }
+    }
+
+    const name = file.name.toLowerCase()
+    if (/\.(png|jpe?g|gif|svg|webp|avif|bmp|ico)$/.test(name)) {
+      return { Icon: FileImage, colorClass: 'text-emerald-500' }
+    }
+    if (/\.(mp4|mov|mkv|webm|avi|m4v)$/.test(name)) {
+      return { Icon: FileVideo, colorClass: 'text-violet-500' }
+    }
+    if (/\.(mp3|wav|ogg|m4a|flac)$/.test(name)) {
+      return { Icon: FileAudio, colorClass: 'text-amber-500' }
+    }
+    if (/\.(zip|rar|7z|tar|gz)$/.test(name)) {
+      return { Icon: FileArchive, colorClass: 'text-rose-500' }
+    }
+    if (/\.(json|ya?ml|toml|xml|html?|css|js|ts|tsx|jsx)$/.test(name)) {
+      return { Icon: FileCode2, colorClass: 'text-cyan-500' }
+    }
+    return { Icon: FileType2, colorClass: 'text-slate-500' }
+  }
+
   return (
     <section
-      className="flex h-full flex-col gap-3 border-r border-canvas-200 p-4"
+      className="flex h-full min-h-0 flex-col gap-3 overflow-hidden border-r border-canvas-200 p-4"
       style={{ background: 'var(--sidebar)' }}
       onContextMenu={(event) => openMenu(event, activeFileId)}
     >
@@ -136,6 +212,9 @@ export const ExplorerSidebar = ({
             Explorer
           </p>
           <h2 className="text-lg font-semibold text-ink-900">Proyecto</h2>
+          <p className="mt-1 truncate text-xs text-ink-500" data-testid="workspace-root">
+            {workspacePath ?? 'Sin workspace'}
+          </p>
         </div>
         <button
           className="rounded-full bg-canvas-100 p-2 text-ink-600"
@@ -156,30 +235,47 @@ export const ExplorerSidebar = ({
           type="text"
         />
       ) : null}
-      <div className="space-y-3 text-sm">
-        {filteredFolders.map((folder) => (
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 text-sm">
+        {visibleFolders.map((folder) => (
           <div key={folder.id} className="space-y-2">
-            <div className="flex items-center gap-2 text-ink-800">
+            <button
+              className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-ink-800 hover:bg-canvas-100"
+              type="button"
+              onClick={() => toggleFolder(folder.id)}
+              data-testid={`folder-toggle-${folder.id}`}
+              style={{ paddingLeft: `${Math.max(4, folder.depth * 10)}px` }}
+            >
+              {collapsedFolders[folder.id] ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
               <Folder size={16} />
               {folder.name}/
-            </div>
-            <div className="space-y-1 pl-4">
-              {folder.files.map((file) => (
-                <button
-                  key={file.id}
-                  className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-ink-700 hover:bg-canvas-100 ${
-                    activeFileId === file.id ? 'bg-canvas-100 text-ink-900' : ''
-                  }`}
-                  onClick={() => onSelectFile(file.id)}
-                  onContextMenu={(event) => openMenu(event, file.id)}
-                  type="button"
-                  data-testid={`file-${file.id}`}
-                >
-                  <FileText size={14} />
-                  {file.name}
-                </button>
-              ))}
-            </div>
+            </button>
+            {!collapsedFolders[folder.id] ? (
+              <div className="space-y-1 pl-4" data-testid={`folder-files-${folder.id}`}>
+                {folder.files.map((file) => {
+                  const { Icon, colorClass } = getFileVisual(file)
+                  return (
+                    <button
+                      key={file.id}
+                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-ink-700 hover:bg-canvas-100 ${
+                        activeFileId === file.id ? 'bg-canvas-100 text-ink-900' : ''
+                      }`}
+                      onClick={() => onSelectFile(file.id)}
+                      onContextMenu={(event) => openMenu(event, file.id)}
+                      type="button"
+                      data-testid={`file-${file.id}`}
+                    >
+                      <Icon size={14} className={colorClass} />
+                      {file.name}
+                      {file.kind === 'asset' ? (
+                        <span className="ml-auto rounded bg-canvas-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-ink-500">
+                          asset
+                        </span>
+                      ) : null}
+                    </button>
+                  )
+                })}
+              </div>
+            ) : null}
           </div>
         ))}
       </div>

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="300" viewBox="0 0 760 300">
+  <rect x="0" y="0" width="760" height="300" fill="#111827" />
+  <rect x="40" y="40" width="680" height="220" rx="12" fill="#1f2937" stroke="#334155" />
+  <text x="60" y="72" fill="#f8fafc" font-size="20" font-family="Arial, sans-serif">Mapa de Componentes</text>
+  <rect x="80" y="100" width="160" height="48" rx="8" fill="#2563eb" />
+  <rect x="300" y="100" width="160" height="48" rx="8" fill="#10b981" />
+  <rect x="520" y="100" width="160" height="48" rx="8" fill="#f59e0b" />
+  <text x="160" y="130" fill="#fff" font-size="14" text-anchor="middle" font-family="Arial, sans-serif">Explorer</text>
+  <text x="380" y="130" fill="#fff" font-size="14" text-anchor="middle" font-family="Arial, sans-serif">Editor</text>
+  <text x="600" y="130" fill="#fff" font-size="14" text-anchor="middle" font-family="Arial, sans-serif">Preview</text>
+  <line x1="240" y1="124" x2="300" y2="124" stroke="#94a3b8" stroke-width="3" />
+  <line x1="460" y1="124" x2="520" y2="124" stroke="#94a3b8" stroke-width="3" />
+  <text x="380" y="200" fill="#cbd5e1" font-size="13" text-anchor="middle" font-family="Arial, sans-serif">Este SVG se usa para probar imagenes locales en export PDF</text>
+</svg>

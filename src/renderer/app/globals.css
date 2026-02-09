@@ -5,18 +5,30 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
-  --canvas: #f7f3ef;
-  --ink: #14181c;
-  --accent: #b3987a;
-  --sidebar: #ffffff;
-  --editor-bg: #ffffff;
-  --preview-bg: #ffffff;
-  --border: #dfd3c6;
-  --status-bg: rgba(255, 255, 255, 0.9);
-  --status-text: #5e7288;
+  color-scheme: dark;
+  --canvas: #0f1114;
+  --ink: #e7eaee;
+  --accent: #8fb3c9;
+  --sidebar: #11151a;
+  --editor-bg: #0f1114;
+  --preview-bg: #0f1114;
+  --border: #1f252c;
+  --status-bg: rgba(15, 17, 20, 0.9);
+  --status-text: #c1cfdd;
   --markdown-bg: transparent;
-  --markdown-text: #14181c;
+  --markdown-text: #e7eaee;
+  --surface: #11151a;
+  --surface-muted: #161b21;
+  --surface-panel: rgba(17, 21, 26, 0.92);
+  --overlay-scrim: rgba(0, 0, 0, 0.45);
+  --text-primary: #f3f7fb;
+  --text-secondary: #dce6f0;
+  --text-muted: #c1cfdd;
+  --button-primary-bg: #8fb3c9;
+  --button-primary-text: #0f1114;
+  --button-outline-border: #32414d;
+  --button-outline-text: #d7e0e8;
+  --button-ghost-hover: rgba(143, 179, 201, 0.16);
 }
 
 * {
@@ -31,6 +43,19 @@ body {
   background: var(--canvas);
 }
 
+button,
+header,
+aside,
+[data-testid='workspace-path'],
+[data-testid^='tool-'] {
+  user-select: none;
+}
+
+.cm-editor,
+.cm-editor * {
+  user-select: text !important;
+}
+
 .markdown-body {
   background: var(--markdown-bg);
   color: var(--markdown-text);
@@ -39,4 +64,63 @@ body {
 
 #root {
   min-height: 100vh;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+:root[data-theme='dark'] .text-ink-900,
+:root[data-theme='dark'] .text-ink-800,
+:root[data-theme='dark'] .text-ink-700 {
+  color: var(--text-primary) !important;
+}
+
+:root[data-theme='dark'] .text-ink-600,
+:root[data-theme='dark'] .text-ink-500 {
+  color: var(--text-secondary) !important;
+}
+
+:root[data-theme='dark'] .text-ink-400 {
+  color: var(--text-muted) !important;
+}
+
+:root[data-theme='dark'] .bg-canvas-50,
+:root[data-theme='dark'] .bg-canvas-100,
+:root[data-theme='dark'] .bg-white,
+:root[data-theme='dark'] .bg-white\/70,
+:root[data-theme='dark'] .bg-white\/95 {
+  background-color: var(--surface) !important;
+}
+
+:root[data-theme='dark'] .border-canvas-200,
+:root[data-theme='dark'] .border-canvas-200\/70,
+:root[data-theme='dark'] .border-ink-200,
+:root[data-theme='dark'] .border-ink-400 {
+  border-color: var(--button-outline-border) !important;
+}
+
+:root[data-theme='dark'] .hover\:bg-canvas-100:hover,
+:root[data-theme='dark'] .hover\:bg-ink-100:hover {
+  background-color: var(--surface-muted) !important;
+}
+
+:root[data-theme='dark'] .bg-ink-900\/20 {
+  background-color: var(--overlay-scrim) !important;
+}
+
+:root[data-theme='dark'] .bg-ink-900 {
+  background-color: var(--button-primary-bg) !important;
+}
+
+:root[data-theme='dark'] .hover\:bg-ink-800:hover {
+  background-color: #a3c5d9 !important;
+}
+
+:root[data-theme='dark'] .text-canvas-50 {
+  color: var(--button-primary-text) !important;
+}
+
+:root[data-theme='dark'] .markdown-body {
+  color: var(--text-primary);
 }

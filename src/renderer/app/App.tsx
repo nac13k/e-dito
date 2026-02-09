@@ -1,8 +1,10 @@
 import { Sparkles } from 'lucide-react'
 import MarkdownIt from 'markdown-it'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import * as markdownItEmoji from 'markdown-it-emoji'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { EditorPane } from '@/features/editor/EditorPane'
+import { AssetPreviewPane } from '@/features/editor/AssetPreviewPane'
 import { ExportPanel } from '@/features/export/ExportPanel'
 import { ExplorerSidebar, type ExplorerFolder } from '@/features/explorer/ExplorerSidebar'
 import { GitPanel } from '@/features/git/GitPanel'
@@ -14,48 +16,148 @@ import { Button } from '@/shared/ui/button'
 import { CommandPalette } from './CommandPalette'
 import { AppShell } from './AppShell'
 
+const normalizeMarkdownInput = (source: string) =>
+  source
+    .split('\n')
+    .map((line) => {
+      if (/^\s*[-*_]{3,}\s*$/.test(line)) {
+        return line
+      }
+
+      if (/^(#{1,6})([^\s#].+)$/.test(line)) {
+        return line.replace(/^(#{1,6})([^\s#].+)$/, '$1 $2')
+      }
+
+      if (/^(\s*[-*+])([^\s*+-].+)$/.test(line)) {
+        return line.replace(/^(\s*[-*+])([^\s].+)$/, '$1 $2')
+      }
+
+      if (/^(\s*\d+\.)([^\s].+)$/.test(line)) {
+        return line.replace(/^(\s*\d+\.)([^\s].+)$/, '$1 $2')
+      }
+
+      return line
+    })
+    .join('\n')
+
+const withTaskCheckboxes = (html: string) =>
+  html
+    .replace(/<li>\s*\[ \]\s+/g, '<li><input type="checkbox" disabled /> ')
+    .replace(/<li>\s*\[(x|X)\]\s+/g, '<li><input type="checkbox" disabled checked /> ')
+
+const toDisplayName = (fileName: string) => fileName.replace(/\.(md|markdown|mdx|txt)$/i, '')
+const isExternalHref = (href: string) => /^(https?:|mailto:|tel:|data:|file:)/i.test(href)
+const resolvePreviewHref = (href: string, sourcePath?: string) => {
+  if (!href || href.startsWith('#') || isExternalHref(href) || !sourcePath) {
+    return href
+  }
+
+  try {
+    const normalizedSource = sourcePath.replace(/\\/g, '/')
+    const baseUrl = normalizedSource.startsWith('/')
+      ? `file://${normalizedSource}`
+      : `file:///${normalizedSource}`
+    return new URL(href, baseUrl).toString()
+  } catch {
+    return href
+  }
+}
+
+const rewriteLocalImagesForPreview = async (
+  markdownSource: string,
+  workspacePath: string,
+  sourcePath?: string,
+) => {
+  if (!sourcePath) {
+    return markdownSource
+  }
+
+  const pattern = /!\[([^\]]*)\]\(([^)]+)\)/g
+  const matches = Array.from(markdownSource.matchAll(pattern))
+  let updated = markdownSource
+
+  for (const match of matches) {
+    const rawTarget = match[2].trim().replace(/^<|>$/g, '')
+    const href = rawTarget.split(/\s+/)[0]
+    if (!href || href.startsWith('#') || isExternalHref(href)) {
+      continue
+    }
+
+    const normalizedSource = sourcePath.replace(/\\/g, '/')
+    const baseUrl = normalizedSource.startsWith('/')
+      ? `file://${normalizedSource}`
+      : `file:///${normalizedSource}`
+
+    try {
+      const absolutePath = new URL(href, baseUrl).pathname
+      const dataUrl = await window.api.readWorkspaceFileDataUrl({
+        workspacePath,
+        filePath: decodeURIComponent(absolutePath),
+      })
+      updated = updated.replace(match[0], `![${match[1]}](${dataUrl})`)
+    } catch {
+      // Mantener referencia original cuando no se pueda resolver.
+    }
+  }
+
+  return updated
+}
+const emojiPlugin = (
+  markdownItEmoji as unknown as {
+    full?: (md: MarkdownIt) => void
+  }
+).full
+
 const App = () => {
   const [docCount, setDocCount] = useState(0)
-  const [markdown, setMarkdown] = useState('# Nuevo documento')
-  const [activeFileId, setActiveFileId] = useState<string | null>('overview')
-  const [files, setFiles] = useState<Record<string, string>>({
-    overview: '# Overview\n\nNotas iniciales',
-    diagrams: '```mermaid\nflowchart LR\n  A-->B\n```',
-    notes: '# Notes\n\nIdeas sueltas',
-  })
-  const [folders, setFolders] = useState<ExplorerFolder[]>([
-    {
-      id: 'docs',
-      name: 'docs',
-      files: [
-        { id: 'overview', name: 'overview.md' },
-        { id: 'diagrams', name: 'diagrams.md' },
-      ],
-    },
-    {
-      id: 'research',
-      name: 'research',
-      files: [{ id: 'notes', name: 'notes.md' }],
-    },
-  ])
+  const [markdown, setMarkdown] = useState('')
+  const [previewMarkdown, setPreviewMarkdown] = useState('')
+  const [activeFileId, setActiveFileId] = useState<string | null>(null)
+  const [folders, setFolders] = useState<ExplorerFolder[]>([])
+  const [filePaths, setFilePaths] = useState<Record<string, string>>({})
+  const [fileKinds, setFileKinds] = useState<Record<string, 'markdown' | 'asset'>>({})
+  const [activeAssetPreview, setActiveAssetPreview] = useState<{
+    id: string
+    name: string
+    path: string
+    imageDataUrl: string | null
+  } | null>(null)
+  const [folderPaths, setFolderPaths] = useState<Record<string, string>>({})
+  const [exportIncludeSourcePath, setExportIncludeSourcePath] = useState(true)
+  const [exportIncludeFileName, setExportIncludeFileName] = useState(true)
   const [exportStatus, setExportStatus] = useState('Sin exportaciones')
+  const [jumpRequest, setJumpRequest] = useState<{ text: string; nonce: number } | null>(null)
   const [gitSyncCount, setGitSyncCount] = useState(0)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [activeTool, setActiveTool] = useState<'git' | 'export' | null>(null)
   const [viewMode, setViewMode] = useState<'editor' | 'preview'>('editor')
   const [commandOpen, setCommandOpen] = useState(false)
   const [scrollRatio, setScrollRatio] = useState(0)
-  const editorRef = useRef<HTMLTextAreaElement>(null)
+  const editorRef = useRef<HTMLDivElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
-  const [theme, setTheme] = useState<'light' | 'dark'>('light')
+  const [theme, setTheme] = useState<'light' | 'dark'>('dark')
   const [themeColors, setThemeColors] = useState<Record<string, string>>({})
-  const [mermaidTheme, setMermaidTheme] = useState<'neutral' | 'dark'>('neutral')
+  const [mermaidTheme, setMermaidTheme] = useState<'neutral' | 'dark'>('dark')
   const selectWorkspace = useWorkspaceStore((state) => state.selectWorkspace)
+  const loadLastWorkspace = useWorkspaceStore((state) => state.loadLastWorkspace)
   const workspacePath = useWorkspaceStore((state) => state.path)
-  const [clipboard, setClipboard] = useState<{ name: string; content: string } | null>(null)
+  const [clipboard, setClipboard] = useState<{ name: string; path: string } | null>(null)
+  const saveTimeoutRef = useRef<number | null>(null)
+
+  const getEditorScroller = () => editorRef.current?.querySelector('.cm-scroller') as HTMLDivElement | null
 
   const markdownIt = useMemo(() => {
-    const instance = new MarkdownIt({ html: false, linkify: true })
+    const instance = new MarkdownIt({ html: false, linkify: true, breaks: true })
+    const defaultValidateLink = instance.validateLink
+    instance.validateLink = (url) => {
+      if (/^data:image\//i.test(url)) {
+        return true
+      }
+      return defaultValidateLink(url)
+    }
+    if (emojiPlugin) {
+      instance.use(emojiPlugin)
+    }
     const defaultFence = instance.renderer.rules.fence
 
     instance.renderer.rules.fence = (tokens, idx, options, env, self) => {
@@ -73,12 +175,77 @@ const App = () => {
       return self.renderToken(tokens, idx, options)
     }
 
+    const defaultImage = instance.renderer.rules.image
+    instance.renderer.rules.image = (tokens, idx, options, env, self) => {
+      const token = tokens[idx]
+      const sourcePath = (env as { sourcePath?: string }).sourcePath
+      const srcIndex = token.attrIndex('src')
+      if (srcIndex >= 0) {
+        token.attrs![srcIndex]![1] = resolvePreviewHref(token.attrs![srcIndex]![1], sourcePath)
+      }
+
+      if (defaultImage) {
+        return defaultImage(tokens, idx, options, env, self)
+      }
+
+      return self.renderToken(tokens, idx, options)
+    }
+
+    const defaultLinkOpen = instance.renderer.rules.link_open
+    instance.renderer.rules.link_open = (tokens, idx, options, env, self) => {
+      const token = tokens[idx]
+      const sourcePath = (env as { sourcePath?: string }).sourcePath
+      const hrefIndex = token.attrIndex('href')
+      if (hrefIndex >= 0) {
+        token.attrs![hrefIndex]![1] = resolvePreviewHref(token.attrs![hrefIndex]![1], sourcePath)
+      }
+
+      if (token.attrIndex('target') < 0) {
+        token.attrPush(['target', '_blank'])
+      }
+      if (token.attrIndex('rel') < 0) {
+        token.attrPush(['rel', 'noopener noreferrer'])
+      }
+
+      if (defaultLinkOpen) {
+        return defaultLinkOpen(tokens, idx, options, env, self)
+      }
+
+      return self.renderToken(tokens, idx, options)
+    }
+
     return instance
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const run = async () => {
+      if (!workspacePath) {
+        setPreviewMarkdown(markdown)
+        return
+      }
+
+      const sourcePath = activeFileId ? filePaths[activeFileId] : undefined
+      const withImages = await rewriteLocalImagesForPreview(markdown, workspacePath, sourcePath)
+      if (!cancelled) {
+        setPreviewMarkdown(withImages)
+      }
+    }
+
+    void run()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeFileId, filePaths, markdown, workspacePath])
+
   const previewHtml = useMemo(() => {
-    const html = markdownIt.render(markdown)
-    return html
-  }, [markdown, markdownIt])
+    const normalized = normalizeMarkdownInput(previewMarkdown)
+    const sourcePath = activeFileId ? filePaths[activeFileId] : undefined
+    const html = markdownIt.render(normalized, { sourcePath })
+    return withTaskCheckboxes(html)
+  }, [activeFileId, filePaths, previewMarkdown, markdownIt])
 
   const gitStatus = useMemo(() => {
     if (gitSyncCount === 0) {
@@ -96,67 +263,244 @@ const App = () => {
     return folders.find((folder) => folder.files.some((file) => file.id === fileId)) ?? null
   }
 
-  const createDoc = (folderId?: string) => {
-    const nextCount = docCount + 1
-    const id = `doc-${Date.now()}`
-    const name = `doc-${nextCount}.md`
-    const targetFolder =
-      folderId ?? findFolderByFile(activeFileId)?.id ?? folders[0]?.id ?? null
+  const toFileId = (rootPath: string, targetPath: string) =>
+    targetPath
+      .replace(`${rootPath}/`, '')
+      .replace(`${rootPath}\\`, '')
+      .split('\\')
+      .join('/')
 
-    setDocCount(nextCount)
-    setFiles((current) => ({ ...current, [id]: '# Nuevo documento' }))
-    setFolders((current) => {
-      if (!targetFolder) {
-        return current
+  const loadWorkspaceTree = useCallback(async (targetPath: string, preferredActiveId: string | null) => {
+    const tree = await window.api.readWorkspaceTree(targetPath)
+    const nextFolders: ExplorerFolder[] = tree.map((folder) => ({
+      id: folder.id,
+      name: folder.name,
+      parentId: folder.parentId,
+      depth: folder.depth,
+      files: folder.files.map((file) => ({ id: file.id, name: file.name, kind: file.kind })),
+    }))
+    const nextFilePaths = tree.reduce<Record<string, string>>((acc, folder) => {
+      for (const file of folder.files) {
+        acc[file.id] = file.path
       }
-      return current.map((folder) =>
-        folder.id === targetFolder
-          ? { ...folder, files: [...folder.files, { id, name }] }
-          : folder
-      )
+      return acc
+    }, {})
+    const nextFolderPaths = tree.reduce<Record<string, string>>((acc, folder) => {
+      acc[folder.id] = folder.path
+      return acc
+    }, {})
+    const nextFileKinds = tree.reduce<Record<string, 'markdown' | 'asset'>>((acc, folder) => {
+      for (const file of folder.files) {
+        acc[file.id] = file.kind
+      }
+      return acc
+    }, {})
+
+    setFolders(nextFolders)
+    setFilePaths(nextFilePaths)
+    setFileKinds(nextFileKinds)
+    setFolderPaths(nextFolderPaths)
+    setDocCount(Object.keys(nextFilePaths).length)
+
+    const availableFiles = Object.keys(nextFilePaths)
+    if (availableFiles.length === 0) {
+      setActiveFileId(null)
+      setMarkdown('')
+      setActiveAssetPreview(null)
+      return
+    }
+
+    const nextActive =
+      (preferredActiveId && nextFilePaths[preferredActiveId] ? preferredActiveId : null)
+      ?? availableFiles[0]
+    const content = await window.api.readWorkspaceFile({
+      workspacePath: targetPath,
+      filePath: nextFilePaths[nextActive],
     })
-    setActiveFileId(id)
-    setMarkdown('# Nuevo documento')
+    setActiveFileId(nextActive)
+    setMarkdown(content)
+    setActiveAssetPreview(null)
+    setViewMode('preview')
+  }, [])
+
+  const createDoc = async (folderId?: string) => {
+    if (!workspacePath) {
+      return
+    }
+
+    const fallbackFolderId = findFolderByFile(activeFileId)?.id ?? folders[0]?.id ?? '.'
+    const targetFolderId = folderId ?? fallbackFolderId
+    const targetFolderPath = folderPaths[targetFolderId] ?? workspacePath
+    const createdPath = await window.api.createWorkspaceFile({
+      workspacePath,
+      folderPath: targetFolderPath,
+      baseName: 'documento',
+    })
+
+    const createdId = toFileId(workspacePath, createdPath)
+    await loadWorkspaceTree(workspacePath, createdId)
+    const content = await window.api.readWorkspaceFile({ workspacePath, filePath: createdPath })
+    setActiveFileId(createdId)
+    setMarkdown(content)
+    setActiveAssetPreview(null)
     setViewMode('editor')
   }
 
-  const handleSelectFile = (id: string) => {
+  const handleSelectFile = async (id: string) => {
+    if (!workspacePath || !filePaths[id]) {
+      return
+    }
+
+    if (fileKinds[id] === 'asset') {
+      const filePath = filePaths[id]
+      const fileName = id.split('/').pop() ?? id
+      const imagePattern = /\.(png|jpe?g|gif|svg|webp|avif)$/i
+      const imageDataUrl = imagePattern.test(id)
+        ? await window.api.readWorkspaceFileDataUrl({ workspacePath, filePath })
+        : null
+
+      setActiveFileId(id)
+      setActiveAssetPreview({
+        id,
+        name: fileName,
+        path: filePath,
+        imageDataUrl,
+      })
+      setViewMode('editor')
+      return
+    }
+
+    const content = await window.api.readWorkspaceFile({
+      workspacePath,
+      filePath: filePaths[id],
+    })
     setActiveFileId(id)
-    setMarkdown(files[id] ?? '')
+    setMarkdown(content)
+    setActiveAssetPreview(null)
+    setViewMode('preview')
+  }
+
+  const handlePreviewRequestEdit = (text: string) => {
+    setJumpRequest({ text, nonce: Date.now() })
     setViewMode('editor')
   }
 
   const handleExportFile = async () => {
-    if (window.api?.exportPdfFile) {
-      const response = await window.api.exportPdfFile({
-        title: 'Documento',
-        markdown,
-      })
-      setExportStatus(response)
+    const activePath = activeFileId ? filePaths[activeFileId] : null
+    if (!activeFileId || !activePath) {
+      setExportStatus('Selecciona un archivo para exportar')
       return
     }
 
-    setExportStatus('PDF exportado')
+    const activeName = folders
+      .flatMap((folder) => folder.files)
+      .find((file) => file.id === activeFileId)?.name
+
+    const response = await window.api.exportPdfFile({
+      title: toDisplayName(activeName || 'documento'),
+      markdown,
+      sourcePath: activePath,
+      options: {
+        includeSourcePath: exportIncludeSourcePath,
+        includeFileName: exportIncludeFileName,
+      },
+    })
+    setExportStatus(response)
   }
 
   const handleExportFolder = async () => {
-    if (window.api?.exportPdfFolder) {
-      const response = await window.api.exportPdfFolder()
-      setExportStatus(response)
+    if (!workspacePath || folders.length === 0) {
+      setExportStatus('No hay carpeta cargada para exportar')
       return
     }
 
-    setExportStatus('Carpeta exportada')
+    const activeFolderId = findFolderByFile(activeFileId)?.id ?? folders[0]?.id
+    const folder = folders.find((entry) => entry.id === activeFolderId)
+    if (!folder) {
+      setExportStatus('No hay carpeta disponible para exportar')
+      return
+    }
+
+    const documents = await Promise.all(
+      folder.files.map(async (file) => {
+        const sourcePath = filePaths[file.id]
+        if (!sourcePath) {
+          return null
+        }
+
+        const content =
+          activeFileId === file.id
+            ? markdown
+            : await window.api.readWorkspaceFile({ workspacePath, filePath: sourcePath })
+
+        return {
+          title: toDisplayName(file.name),
+          markdown: content,
+          sourcePath,
+        }
+      })
+    )
+
+    const filteredDocuments = documents.filter((document) => document !== null)
+    if (filteredDocuments.length === 0) {
+      setExportStatus('No hay archivos markdown para exportar en la carpeta')
+      return
+    }
+
+    const response = await window.api.exportPdfFolder({
+      title: `carpeta-${folder.name}`,
+      documents: filteredDocuments,
+      options: {
+        includeSourcePath: exportIncludeSourcePath,
+        includeFileName: exportIncludeFileName,
+      },
+    })
+    setExportStatus(response)
   }
 
   const handleExportProject = async () => {
-    if (window.api?.exportPdfProject) {
-      const response = await window.api.exportPdfProject()
-      setExportStatus(response)
+    if (!workspacePath || folders.length === 0) {
+      setExportStatus('No hay proyecto cargado para exportar')
       return
     }
 
-    setExportStatus('Proyecto exportado')
+    const allFiles = folders.flatMap((folder) => folder.files)
+    const documents = await Promise.all(
+      allFiles.map(async (file) => {
+        const sourcePath = filePaths[file.id]
+        if (!sourcePath) {
+          return null
+        }
+
+        const content =
+          activeFileId === file.id
+            ? markdown
+            : await window.api.readWorkspaceFile({ workspacePath, filePath: sourcePath })
+
+        return {
+          title: toDisplayName(file.name),
+          markdown: content,
+          sourcePath,
+        }
+      })
+    )
+
+    const filteredDocuments = documents.filter((document) => document !== null)
+    if (filteredDocuments.length === 0) {
+      setExportStatus('No hay archivos markdown para exportar en el proyecto')
+      return
+    }
+
+    const workspaceName = workspacePath.split('/').filter(Boolean).pop() || 'proyecto'
+    const response = await window.api.exportPdfProject({
+      title: `proyecto-${workspaceName}`,
+      documents: filteredDocuments,
+      options: {
+        includeSourcePath: exportIncludeSourcePath,
+        includeFileName: exportIncludeFileName,
+      },
+    })
+    setExportStatus(response)
   }
 
   const handleSync = () => {
@@ -233,6 +577,10 @@ const App = () => {
   }, [theme, themeColors, mermaidTheme])
 
   useEffect(() => {
+    void loadLastWorkspace()
+  }, [loadLastWorkspace])
+
+  useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && commandOpen) {
         event.preventDefault()
@@ -250,6 +598,26 @@ const App = () => {
   }, [commandOpen])
 
   useEffect(() => {
+    if (!workspacePath) {
+      return
+    }
+
+    const timer = window.setTimeout(() => {
+      void loadWorkspaceTree(workspacePath, activeFileId)
+    }, 0)
+
+    return () => window.clearTimeout(timer)
+  }, [workspacePath, activeFileId, loadWorkspaceTree])
+
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        window.clearTimeout(saveTimeoutRef.current)
+      }
+    }
+  }, [])
+
+  useEffect(() => {
     if (viewMode === 'preview') {
       const preview = previewRef.current
       if (!preview) {
@@ -260,21 +628,21 @@ const App = () => {
       return
     }
 
-    const editor = editorRef.current
-    if (!editor) {
+    const editorScroller = getEditorScroller()
+    if (!editorScroller) {
       return
     }
-    const maxEditor = editor.scrollHeight - editor.clientHeight
-    editor.scrollTop = maxEditor * scrollRatio
+    const maxEditor = editorScroller.scrollHeight - editorScroller.clientHeight
+    editorScroller.scrollTop = maxEditor * scrollRatio
   }, [viewMode, scrollRatio])
 
   const handleEditorScroll = (scrollTop: number) => {
-    const editor = editorRef.current
-    if (!editor) {
+    const editorScroller = getEditorScroller()
+    if (!editorScroller) {
       return
     }
 
-    const maxEditor = editor.scrollHeight - editor.clientHeight
+    const maxEditor = editorScroller.scrollHeight - editorScroller.clientHeight
     setScrollRatio(maxEditor > 0 ? scrollTop / maxEditor : 0)
   }
 
@@ -287,6 +655,16 @@ const App = () => {
     const maxPreview = preview.scrollHeight - preview.clientHeight
     setScrollRatio(maxPreview > 0 ? scrollTop / maxPreview : 0)
   }
+
+  const fileCommands = folders.flatMap((folder) =>
+    folder.files.map((file) => ({
+      id: `open-file-${file.id.replace(/[^a-zA-Z0-9-_]/g, '-')}`,
+      label: `Abrir archivo: ${file.name}`,
+      category: 'Archivos',
+      aliases: [file.name, folder.name, file.id],
+      onRun: () => void handleSelectFile(file.id),
+    }))
+  )
 
   const commands = [
     {
@@ -319,7 +697,7 @@ const App = () => {
       category: 'Apariencia',
       aliases: ['json', 'tema', 'colores'],
       onRun: async () => {
-        const loaded = await window.api?.loadTheme?.()
+    const loaded = await window.api.loadTheme()
         if (!loaded) {
           return
         }
@@ -384,6 +762,7 @@ const App = () => {
       aliases: ['proyecto', 'exportar proyecto'],
       onRun: () => void handleExportProject(),
     },
+    ...fileCommands,
   ]
 
   return (
@@ -392,11 +771,8 @@ const App = () => {
       header={
         <>
           <div>
-            <p className="text-xs uppercase tracking-[0.32em] text-ink-400">
-              Epica 01
-            </p>
             <h1 className="font-serif text-2xl text-ink-900">
-              Meridian Notes
+              E-Dito
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-4">
@@ -416,99 +792,133 @@ const App = () => {
       }
       leftRail={
           <ExplorerSidebar
+            workspacePath={workspacePath}
             folders={folders}
             activeFileId={activeFileId}
             onSelectFile={handleSelectFile}
             onCreateDoc={(folderId) => createDoc(folderId)}
             onCreateFolder={() => {
-              const nextIndex = folders.length + 1
-              const id = `folder-${Date.now()}`
-              setFolders((current) => [
-                ...current,
-                { id, name: `carpeta-${nextIndex}`, files: [] },
-              ])
+              if (!workspacePath) {
+                return
+              }
+              void window.api
+                .createWorkspaceFolder({
+                  workspacePath,
+                  parentPath: workspacePath,
+                  name: 'carpeta',
+                })
+                .then(() => loadWorkspaceTree(workspacePath, activeFileId))
             }}
             onDeleteFile={(fileId) => {
-              const remaining = folders
-                .flatMap((folder) => folder.files)
-                .filter((file) => file.id !== fileId)
-              const nextActive = remaining[0]?.id ?? null
+              if (!workspacePath) {
+                return
+              }
 
-              setFolders((current) =>
-                current.map((folder) => ({
-                  ...folder,
-                  files: folder.files.filter((file) => file.id !== fileId),
-                }))
-              )
-              setFiles((current) => {
-                const updated = { ...current }
-                delete updated[fileId]
-                return updated
-              })
-              setActiveFileId(nextActive)
-              setMarkdown(nextActive ? files[nextActive] ?? '' : '')
+              const currentPath = filePaths[fileId]
+              if (!currentPath) {
+                return
+              }
+
+              void window.api
+                .deleteWorkspaceFile({ workspacePath, filePath: currentPath })
+                .then(() => {
+                  const remaining = folders
+                    .flatMap((folder) => folder.files)
+                    .filter((file) => file.id !== fileId)
+                  const nextActive = remaining[0]?.id ?? null
+                  return loadWorkspaceTree(workspacePath, nextActive)
+                })
             }}
             onCopyFile={(fileId) => {
+              const sourcePath = filePaths[fileId]
               const fileName = folders
                 .flatMap((folder) => folder.files)
                 .find((file) => file.id === fileId)?.name
-              if (!fileName) {
+              if (!fileName || !sourcePath) {
                 return
               }
-              setClipboard({ name: fileName, content: files[fileId] ?? '' })
+              setClipboard({ name: fileName, path: sourcePath })
             }}
             onPasteFile={(folderId) => {
-              if (!clipboard) {
+              if (!workspacePath || !clipboard) {
                 return
               }
-              const baseName = clipboard.name.replace(/\.md$/, '')
-              const id = `doc-${Date.now()}`
-              const name = `${baseName}-copia.md`
-              const targetFolder =
-                folderId ?? findFolderByFile(activeFileId)?.id ?? folders[0]?.id ?? null
 
-              setFiles((current) => ({ ...current, [id]: clipboard.content }))
-              setFolders((current) => {
-                if (!targetFolder) {
-                  return current
-                }
-                return current.map((folder) =>
-                  folder.id === targetFolder
-                    ? { ...folder, files: [...folder.files, { id, name }] }
-                    : folder
-                )
-              })
+              const fallbackFolderId = findFolderByFile(activeFileId)?.id ?? folders[0]?.id ?? '.'
+              const destinationFolderId = folderId ?? fallbackFolderId
+              const destinationFolderPath = folderPaths[destinationFolderId] ?? workspacePath
+              void window.api
+                .duplicateWorkspaceFile({
+                  workspacePath,
+                  sourcePath: clipboard.path,
+                  destinationFolderPath,
+                })
+                .then((duplicatedPath) => {
+                  const duplicatedId = toFileId(workspacePath, duplicatedPath)
+                  return loadWorkspaceTree(workspacePath, duplicatedId)
+                })
             }}
             onRevealInFinder={(fileId) => {
-              const fileName = fileId
-                ? folders
-                    .flatMap((folder) => folder.files)
-                    .find((file) => file.id === fileId)?.name
-                : null
-              const basePath = workspacePath ?? '/workspace'
-              const target = fileName ? `${basePath}/${fileName}` : basePath
-              void window.api?.revealInFinder?.(target)
+              if (!workspacePath) {
+                return
+              }
+
+              const targetPath = (fileId ? filePaths[fileId] : null) ?? workspacePath
+              if (!targetPath) {
+                return
+              }
+
+              void window.api.revealInFinder(targetPath)
             }}
           />
       }
       main={
         viewMode === 'editor' ? (
-          <EditorPane
-            value={markdown}
-            onChange={(value) => {
-              setMarkdown(value)
-              if (activeFileId) {
-                setFiles((current) => ({ ...current, [activeFileId]: value }))
-              }
-            }}
-            onScroll={handleEditorScroll}
-            editorRef={editorRef}
-          />
+          activeAssetPreview ? (
+            <AssetPreviewPane
+              fileName={activeAssetPreview.name}
+              fileId={activeAssetPreview.id}
+              filePath={activeAssetPreview.path}
+              imageDataUrl={activeAssetPreview.imageDataUrl}
+            />
+          ) : (
+            <EditorPane
+              value={markdown}
+              onChange={(value) => {
+                setMarkdown(value)
+                if (!workspacePath || !activeFileId) {
+                  return
+                }
+
+                const targetPath = filePaths[activeFileId]
+                if (!targetPath) {
+                  return
+                }
+
+                if (saveTimeoutRef.current) {
+                  window.clearTimeout(saveTimeoutRef.current)
+                }
+
+                saveTimeoutRef.current = window.setTimeout(() => {
+                  void window.api.writeWorkspaceFile({
+                    workspacePath,
+                    filePath: targetPath,
+                    content: value,
+                  })
+                }, 220)
+              }}
+              onScroll={handleEditorScroll}
+              editorRef={editorRef}
+              jumpRequest={jumpRequest}
+              onJumpHandled={() => setJumpRequest(null)}
+            />
+          )
         ) : (
           <PreviewPane
             html={previewHtml}
             onScroll={handlePreviewScroll}
             previewRef={previewRef}
+            onRequestEdit={handlePreviewRequestEdit}
           />
         )
       }
@@ -536,6 +946,10 @@ const App = () => {
           ) : (
             <ExportPanel
               status={exportStatus}
+              includeSourcePath={exportIncludeSourcePath}
+              includeFileName={exportIncludeFileName}
+              onToggleIncludeSourcePath={setExportIncludeSourcePath}
+              onToggleIncludeFileName={setExportIncludeFileName}
               onExportFile={handleExportFile}
               onExportFolder={handleExportFolder}
               onExportProject={handleExportProject}

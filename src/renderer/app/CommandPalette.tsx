@@ -119,8 +119,10 @@ export const CommandPalette = ({ open, actions, onClose }: CommandPaletteProps) 
           {filtered.map((action, index) => (
             <button
               key={action.id}
-              className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-ink-700 hover:bg-canvas-100 ${
-                index === selectedIndex ? 'bg-canvas-100' : ''
+              className={`relative flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm text-ink-700 transition-colors hover:bg-canvas-100 ${
+                index === selectedIndex
+                  ? 'bg-canvas-100 text-ink-900'
+                  : ''
               }`}
               onClick={() => {
                 action.onRun()
@@ -130,7 +132,13 @@ export const CommandPalette = ({ open, actions, onClose }: CommandPaletteProps) 
               type="button"
               data-testid={`command-${action.id}`}
             >
-              <span>{action.label}</span>
+              <span
+                className={`absolute left-1.5 top-1/2 h-5 w-1 -translate-y-1/2 rounded-full transition-opacity ${
+                  index === selectedIndex ? 'bg-[#b8d2e4] opacity-100' : 'opacity-0'
+                }`}
+                aria-hidden="true"
+              />
+              <span className="ml-2">{action.label}</span>
               {action.shortcut ? (
                 <span className="text-xs text-ink-400">{action.shortcut}</span>
               ) : null}

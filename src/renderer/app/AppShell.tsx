@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 
 type AppShellProps = {
   header: ReactNode
@@ -20,24 +20,27 @@ export const AppShell = ({
   statusBar,
 }: AppShellProps) => {
   return (
-    <div className="relative min-h-screen bg-canvas-50 text-ink-900">
+    <div className="relative h-screen overflow-hidden bg-canvas-50 text-ink-900">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.8),_transparent_55%)]" />
-      <div className="relative z-10">
-        <header className="border-b border-canvas-200/70 bg-white/70 backdrop-blur">
-          <div className="mx-auto flex max-w-[1400px] items-center justify-between px-6 py-4">
+      <div className="relative z-10 flex h-full flex-col">
+        <header className="select-none border-b border-canvas-200/70 bg-white/70 backdrop-blur">
+          <div className="h-7" style={{ WebkitAppRegion: 'drag' } as CSSProperties} />
+          <div
+            className="flex w-full items-center justify-between pb-4 pl-24 pr-6 pt-2"
+            style={{ WebkitAppRegion: 'no-drag' } as CSSProperties}
+          >
             {header}
           </div>
         </header>
         <main
-          className="mx-auto grid max-w-[1400px] gap-0 px-0 py-0 lg:grid-cols-[260px_minmax(0,1fr)]"
-          style={{ minHeight: 'calc(100vh - 120px)' }}
+          className="grid h-full min-h-0 w-full flex-1 gap-0 overflow-hidden px-0 pb-10 pt-0 lg:grid-cols-[260px_minmax(0,1fr)]"
         >
-          <aside className="space-y-0">{leftRail}</aside>
-          <section className="space-y-0">{main}</section>
+          <aside className="h-full min-h-0 overflow-hidden">{leftRail}</aside>
+          <section className="h-full min-h-0 overflow-hidden">{main}</section>
         </main>
       </div>
-      <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-canvas-200" style={{ background: 'var(--status-bg)' }}>
-        <div className="mx-auto flex max-w-[1400px] items-center justify-between px-6 py-2">
+      <div className="fixed bottom-0 left-0 right-0 z-30 select-none border-t border-canvas-200" style={{ background: 'var(--status-bg)' }}>
+        <div className="flex w-full items-center justify-between px-6 py-2">
           {statusBar}
         </div>
       </div>

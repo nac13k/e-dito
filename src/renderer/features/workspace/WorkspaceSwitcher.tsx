@@ -6,16 +6,27 @@ import { useWorkspaceStore } from './store'
 export const WorkspaceSwitcher = () => {
   const path = useWorkspaceStore((state) => state.path)
   const selectWorkspace = useWorkspaceStore((state) => state.selectWorkspace)
+  const workspaceName = path
+    ? path.split('/').filter(Boolean).pop() ?? path.split('\\').filter(Boolean).pop() ?? path
+    : null
 
   return (
     <div className="flex items-center gap-3">
       <div className="text-sm text-ink-500">Workspace</div>
-      <div
+      <button
+        type="button"
         className="rounded-full bg-canvas-100 px-3 py-1 text-sm text-ink-800 shadow-soft"
         data-testid="workspace-path"
+        title={path ?? 'Sin proyecto abierto'}
+        onClick={() => {
+          if (!path) {
+            return
+          }
+          void window.api.revealInFinder(path)
+        }}
       >
-        {path ?? 'Sin proyecto abierto'}
-      </div>
+        {workspaceName ?? 'Sin proyecto abierto'}
+      </button>
       <Button
         variant="outline"
         size="sm"
