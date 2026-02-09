@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+*.pdf
+
+# Local agent tooling metadata
+.agents/
+.claude/
+.opencode/
+AGENTS.md
