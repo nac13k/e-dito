@@ -123,10 +123,16 @@ const App = () => {
     imageDataUrl: string | null
   } | null>(null)
   const [folderPaths, setFolderPaths] = useState<Record<string, string>>({})
-  const [exportIncludeSourcePath, setExportIncludeSourcePath] = useState(true)
-  const [exportIncludeFileName, setExportIncludeFileName] = useState(true)
+  const [exportIncludeSourcePath, setExportIncludeSourcePath] = useState(false)
+  const [exportIncludeFileName, setExportIncludeFileName] = useState(false)
   const [exportStatus, setExportStatus] = useState('Sin exportaciones')
   const [jumpRequest, setJumpRequest] = useState<{ text: string; nonce: number } | null>(null)
+  const [activeEditBlockIndex, setActiveEditBlockIndex] = useState<number | null>(null)
+  const [editSnapshotBlocks, setEditSnapshotBlocks] = useState<string[] | null>(null)
+  const [editSnapshotPreviewBlocks, setEditSnapshotPreviewBlocks] = useState<string[] | null>(null)
+  const [editBlockDraft, setEditBlockDraft] = useState('')
+  const [editCaretPlacement, setEditCaretPlacement] = useState<'start' | 'end'>('end')
+  const [editCaretNonce, setEditCaretNonce] = useState(0)
   const [gitSyncCount, setGitSyncCount] = useState(0)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [activeTool, setActiveTool] = useState<'git' | 'export' | null>(null)
@@ -143,8 +149,97 @@ const App = () => {
   const workspacePath = useWorkspaceStore((state) => state.path)
   const [clipboard, setClipboard] = useState<{ name: string; path: string } | null>(null)
   const saveTimeoutRef = useRef<number | null>(null)
+  const markdownRef = useRef(markdown)
 
   const getEditorScroller = () => editorRef.current?.querySelector('.cm-scroller') as HTMLDivElement | null
+
+  const splitBlocks = (source: string) => {
+    const blocks = source.split(/\n{2,}/)
+    return blocks.length === 1 && blocks[0] === '' ? [''] : blocks
+  }
+
+  const normalizeBlockDraft = (value: string) =>
+    value
+      .replace(/\r\n/g, '\n')
+      .replace(/\s+$/g, '')
+
+  const buildHeadingTrail = (source: string, upToBlockIndex: number) => {
+    const blocks = splitBlocks(source)
+    const levels = new Map<number, string>()
+    for (let index = 0; index <= upToBlockIndex && index < blocks.length; index += 1) {
+      const lines = blocks[index].split('\n')
+      for (const line of lines) {
+        const match = line.match(/^(#{1,6})\s+(.+)$/)
+        if (!match) {
+          continue
+        }
+        const level = match[1].length
+        levels.set(level, match[2].trim())
+        for (let next = level + 1; next <= 6; next += 1) {
+          levels.delete(next)
+        }
+      }
+    }
+
+    return Array.from(levels.keys())
+      .sort((a, b) => a - b)
+      .map((level) => levels.get(level))
+      .filter((value): value is string => Boolean(value))
+  }
+
+  const flushMarkdownSave = (content?: string) => {
+    if (!workspacePath || !activeFileId) {
+      return
+    }
+
+    const targetPath = filePaths[activeFileId]
+    if (!targetPath) {
+      return
+    }
+
+    if (saveTimeoutRef.current) {
+      window.clearTimeout(saveTimeoutRef.current)
+      saveTimeoutRef.current = null
+    }
+
+    const payload = typeof content === 'string' ? content : markdownRef.current
+    void window.api.writeWorkspaceFile({
+      workspacePath,
+      filePath: targetPath,
+      content: payload,
+    })
+  }
+
+  const updateMarkdown = (nextValue: string, flush = false) => {
+    setMarkdown(nextValue)
+    markdownRef.current = nextValue
+
+    if (!workspacePath || !activeFileId) {
+      return
+    }
+
+    const targetPath = filePaths[activeFileId]
+    if (!targetPath) {
+      return
+    }
+
+    if (saveTimeoutRef.current) {
+      window.clearTimeout(saveTimeoutRef.current)
+    }
+
+    if (flush) {
+      flushMarkdownSave(nextValue)
+      return
+    }
+
+    saveTimeoutRef.current = window.setTimeout(() => {
+      void window.api.writeWorkspaceFile({
+        workspacePath,
+        filePath: targetPath,
+        content: nextValue,
+      })
+    }, 220)
+  }
 
   const markdownIt = useMemo(() => {
     const instance = new MarkdownIt({ html: false, linkify: true, breaks: true })
@@ -218,6 +313,10 @@ const App = () => {
   }, [])
 
   useEffect(() => {
+    markdownRef.current = markdown
+  }, [markdown])
+
+  useEffect(() => {
     let cancelled = false
 
     const run = async () => {
@@ -240,12 +339,49 @@ const App = () => {
     }
   }, [activeFileId, filePaths, markdown, workspacePath])
 
-  const previewHtml = useMemo(() => {
-    const normalized = normalizeMarkdownInput(previewMarkdown)
+  const markdownBlocks = useMemo(() => splitBlocks(markdown), [markdown])
+  const previewBlocks = useMemo(() => splitBlocks(previewMarkdown), [previewMarkdown])
+  const sourceMarkdownBlocks = activeEditBlockIndex !== null && editSnapshotBlocks
+    ? editSnapshotBlocks
+    : markdownBlocks
+  const sourcePreviewBlocks = activeEditBlockIndex !== null && editSnapshotPreviewBlocks
+    ? editSnapshotPreviewBlocks
+    : previewBlocks
+  const renderedBlocks = useMemo(() => {
     const sourcePath = activeFileId ? filePaths[activeFileId] : undefined
-    const html = markdownIt.render(normalized, { sourcePath })
-    return withTaskCheckboxes(html)
-  }, [activeFileId, filePaths, previewMarkdown, markdownIt])
+    return sourcePreviewBlocks.map((block, index) => {
+      const normalized = normalizeMarkdownInput(block)
+      const html = withTaskCheckboxes(markdownIt.render(normalized, { sourcePath }))
+      return {
+        index,
+        html,
+        raw: activeEditBlockIndex === index ? editBlockDraft : (sourceMarkdownBlocks[index] ?? ''),
+        isEditing: activeEditBlockIndex === index,
+      }
+    })
+  }, [
+    activeEditBlockIndex,
+    activeFileId,
+    editBlockDraft,
+    filePaths,
+    markdownIt,
+    sourceMarkdownBlocks,
+    sourcePreviewBlocks,
+  ])
+
+  const previewBreadcrumbs = useMemo(() => {
+    if (!activeFileId) {
+      return 'Sin archivo seleccionado'
+    }
+    const currentMarkdown =
+      activeEditBlockIndex !== null && editSnapshotBlocks
+        ? [...editSnapshotBlocks]
+            .map((block, index) => (index === activeEditBlockIndex ? editBlockDraft : block))
+            .join('\n\n')
+        : markdown
+    const headingTrail = buildHeadingTrail(currentMarkdown, activeEditBlockIndex ?? 0)
+    return headingTrail.length > 0 ? `${activeFileId} / ${headingTrail.join(' / ')}` : activeFileId
+  }, [activeEditBlockIndex, activeFileId, editBlockDraft, editSnapshotBlocks, markdown])
 
   const gitStatus = useMemo(() => {
     if (gitSyncCount === 0) {
@@ -320,6 +456,7 @@ const App = () => {
     setActiveFileId(nextActive)
     setMarkdown(content)
     setActiveAssetPreview(null)
+    setActiveEditBlockIndex(null)
     setViewMode('preview')
   }, [])
 
@@ -343,6 +480,7 @@ const App = () => {
     setActiveFileId(createdId)
     setMarkdown(content)
     setActiveAssetPreview(null)
+    setActiveEditBlockIndex(null)
     setViewMode('editor')
   }
 
@@ -366,6 +504,7 @@ const App = () => {
         path: filePath,
         imageDataUrl,
       })
+      setActiveEditBlockIndex(null)
       setViewMode('editor')
       return
     }
@@ -377,12 +516,8 @@ const App = () => {
     setActiveFileId(id)
     setMarkdown(content)
     setActiveAssetPreview(null)
+    setActiveEditBlockIndex(null)
     setViewMode('preview')
-  }
-
-  const handlePreviewRequestEdit = (text: string) => {
-    setJumpRequest({ text, nonce: Date.now() })
-    setViewMode('editor')
   }
 
   const handleExportFile = async () => {
@@ -884,29 +1019,7 @@ const App = () => {
           ) : (
             <EditorPane
               value={markdown}
-              onChange={(value) => {
-                setMarkdown(value)
-                if (!workspacePath || !activeFileId) {
-                  return
-                }
-
-                const targetPath = filePaths[activeFileId]
-                if (!targetPath) {
-                  return
-                }
-
-                if (saveTimeoutRef.current) {
-                  window.clearTimeout(saveTimeoutRef.current)
-                }
-
-                saveTimeoutRef.current = window.setTimeout(() => {
-                  void window.api.writeWorkspaceFile({
-                    workspacePath,
-                    filePath: targetPath,
-                    content: value,
-                  })
-                }, 220)
-              }}
+              onChange={(value) => updateMarkdown(value)}
               onScroll={handleEditorScroll}
               editorRef={editorRef}
               jumpRequest={jumpRequest}
@@ -915,10 +1028,118 @@ const App = () => {
           )
         ) : (
           <PreviewPane
-            html={previewHtml}
+            blocks={renderedBlocks}
+            breadcrumbs={previewBreadcrumbs}
             onScroll={handlePreviewScroll}
             previewRef={previewRef}
-            onRequestEdit={handlePreviewRequestEdit}
+            onSelectBlock={(index) => {
+              setActiveEditBlockIndex(index)
+              setEditSnapshotBlocks(markdownBlocks)
+              setEditSnapshotPreviewBlocks(previewBlocks)
+              setEditBlockDraft(markdownBlocks[index] ?? '')
+              setEditCaretPlacement('end')
+              setEditCaretNonce((current) => current + 1)
+            }}
+            onChangeBlock={(index, nextValue) => {
+              const baseBlocks = activeEditBlockIndex !== null && editSnapshotBlocks
+                ? [...editSnapshotBlocks]
+                : [...markdownBlocks]
+              baseBlocks[index] = nextValue
+              setEditBlockDraft(nextValue)
+              updateMarkdown(baseBlocks.join('\n\n'))
+            }}
+            onBlurBlock={() => {
+              const baseBlocks = activeEditBlockIndex !== null && editSnapshotBlocks
+                ? [...editSnapshotBlocks]
+                : [...markdownBlocks]
+              if (activeEditBlockIndex !== null) {
+                const normalizedDraft = normalizeBlockDraft(editBlockDraft)
+                const nextBlocksFromDraft = splitBlocks(normalizedDraft)
+                baseBlocks.splice(activeEditBlockIndex, 1, ...nextBlocksFromDraft)
+              }
+              const compactBlocks = baseBlocks.filter((block) => {
+                if (baseBlocks.length === 1) {
+                  return true
+                }
+                return block.trim().length > 0
+              })
+              const nextValue = compactBlocks.join('\n\n')
+              updateMarkdown(nextValue, true)
+              setEditSnapshotBlocks(null)
+              setEditSnapshotPreviewBlocks(null)
+              setEditBlockDraft('')
+              setActiveEditBlockIndex(null)
+            }}
+            onInsertBlockBelow={(index) => {
+              const baseBlocks = activeEditBlockIndex !== null && editSnapshotBlocks
+                ? [...editSnapshotBlocks]
+                : [...markdownBlocks]
+              if (activeEditBlockIndex !== null) {
+                baseBlocks[activeEditBlockIndex] = editBlockDraft
+              }
+
+              baseBlocks.splice(index + 1, 0, '')
+              setEditSnapshotBlocks(baseBlocks)
+              setEditSnapshotPreviewBlocks(baseBlocks)
+              setEditBlockDraft('')
+              setActiveEditBlockIndex(index + 1)
+              setEditCaretPlacement('start')
+              setEditCaretNonce((current) => current + 1)
+              updateMarkdown(baseBlocks.join('\n\n'), true)
+            }}
+            onMergeBlockWithPrevious={(index) => {
+              if (index <= 0) {
+                return
+              }
+
+              const baseBlocks = activeEditBlockIndex !== null && editSnapshotBlocks
+                ? [...editSnapshotBlocks]
+                : [...markdownBlocks]
+
+              if (activeEditBlockIndex !== null) {
+                baseBlocks[activeEditBlockIndex] = editBlockDraft
+              }
+
+              const previous = baseBlocks[index - 1] ?? ''
+              const current = baseBlocks[index] ?? ''
+              const separator = previous.endsWith('\n') || current.startsWith('\n') ? '' : '\n'
+              const merged = `${previous}${separator}${current}`
+
+              baseBlocks[index - 1] = merged
+              baseBlocks.splice(index, 1)
+
+              setEditSnapshotBlocks(baseBlocks)
+              setEditSnapshotPreviewBlocks(baseBlocks)
+              setEditBlockDraft(merged)
+              setActiveEditBlockIndex(index - 1)
+              setEditCaretPlacement('end')
+              setEditCaretNonce((current) => current + 1)
+              updateMarkdown(baseBlocks.join('\n\n'), true)
+            }}
+            onNavigateBlock={(index, direction) => {
+              const baseBlocks = activeEditBlockIndex !== null && editSnapshotBlocks
+                ? [...editSnapshotBlocks]
+                : [...markdownBlocks]
+
+              if (activeEditBlockIndex !== null) {
+                baseBlocks[activeEditBlockIndex] = editBlockDraft
+              }
+
+              const nextIndex = direction === 'down' ? index + 1 : index - 1
+              if (nextIndex < 0 || nextIndex >= baseBlocks.length) {
+                return
+              }
+
+              setEditSnapshotBlocks(baseBlocks)
+              setEditSnapshotPreviewBlocks(baseBlocks)
+              setActiveEditBlockIndex(nextIndex)
+              setEditBlockDraft(baseBlocks[nextIndex] ?? '')
+              setEditCaretPlacement(direction === 'down' ? 'start' : 'end')
+              setEditCaretNonce((current) => current + 1)
+              updateMarkdown(baseBlocks.join('\n\n'))
+            }}
+            editCaretPlacement={editCaretPlacement}
+            editCaretNonce={editCaretNonce}
           />
         )
       }
