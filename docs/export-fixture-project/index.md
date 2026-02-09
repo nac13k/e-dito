@@ -1,13 +1,15 @@
 # Proyecto Demo de Exportacion
 
+## Navegacion principal 2
+
 Este proyecto de prueba valida exportacion PDF con:
 
 - enlaces entre documentos y anchors
 - imagenes locales y remotas
-- Mermaid
-- diagramas de texto (ASCII)
 
-## Navegacion principal 2
+- Mermaid
+
+- diagramas de texto (ASCII)
 
 - [Quickstart](./notes/quickstart.md)
 - [Arquitectura del sistema](./architecture/system.md)
@@ -53,7 +55,7 @@ flowchart TD
   +----------------+          +-------------------+
 ```
 
-## Referencias cruzadas
-
 - Desde aqui a [Integraciones#enlaces-y-recursos](./architecture/integration.md#enlaces-y-recursos)
 - Desde aqui a [Checklist#anchors-cruzados](./operations/checklist.md#anchors-cruzados)
+
+## Referencias cruzadas

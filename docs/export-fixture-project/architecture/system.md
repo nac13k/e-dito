@@ -20,6 +20,8 @@
 ## Enlaces
 
 - [Ir a Integraciones](./integration.md)
+
+otra cosa
 - [Ir a sección de seguridad en Integraciones](./integration.md#seguridad)
 - [Volver a Mermaid principal del index](../index.md#mermaid-principal)
 
