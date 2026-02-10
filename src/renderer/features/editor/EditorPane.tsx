@@ -9,12 +9,28 @@ import { redo, undo } from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
 import { languages } from '@codemirror/language-data'
 import { oneDark } from '@codemirror/theme-one-dark'
-import { ChevronDown, ChevronUp, Copy, Heading2, List, Trash2 } from 'lucide-react'
+import {
+  Copy,
+  Heading1,
+  Heading2,
+  Heading3,
+  Link,
+  List,
+  ListChecks,
+  MessageSquareQuote,
+  SmilePlus,
+  SquareCode,
+  Trash2,
+} from 'lucide-react'
 import { EditorView, type ViewUpdate } from '@codemirror/view'
-import { useEffect, useMemo, useRef, useState, type DragEvent, type RefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+
+const EMOJI_RECENTS_STORAGE_KEY = 'editor:emoji-recents'
+const MAX_RECENT_EMOJIS = 10
 
 type EditorPaneProps = {
   value: string
+  breadcrumbFile: string | null
   onChange: (value: string) => void
   onScroll: (scrollTop: number) => void
   editorRef: RefObject<HTMLDivElement | null>
@@ -24,12 +40,15 @@ type EditorPaneProps = {
 
 export const EditorPane = ({
   value,
+  breadcrumbFile,
   onChange,
   onScroll,
   editorRef,
   jumpRequest,
   onJumpHandled,
 }: EditorPaneProps) => {
+  const [cursorPos, setCursorPos] = useState(0)
+
   const markdownCompletions: Completion[] = useMemo(
     () => [
       { label: '# ', detail: 'Heading 1', type: 'keyword' },
@@ -70,31 +89,137 @@ export const EditorPane = ({
   )
 
   const viewRef = useRef<EditorView | null>(null)
-  const [draggingBlockIndex, setDraggingBlockIndex] = useState<number | null>(null)
-  const [cursorPos, setCursorPos] = useState(0)
   const [slashOpen, setSlashOpen] = useState(false)
   const [slashIndex, setSlashIndex] = useState(0)
+  const [emojiMenuOpen, setEmojiMenuOpen] = useState(false)
+  const [emojiQuery, setEmojiQuery] = useState('')
+  const [recentEmojiShortcodes, setRecentEmojiShortcodes] = useState<string[]>([])
+  const emojiMenuRef = useRef<HTMLDivElement | null>(null)
 
-  const getBlocks = (content: string) => {
-    const rawBlocks = content.split(/\n\n/)
-    const blocks = rawBlocks.length === 1 && rawBlocks[0] === '' ? [] : rawBlocks
-    const ranges = blocks.map((block, index) => {
-      const from = blocks.slice(0, index).reduce((acc, current) => acc + current.length + 2, 0)
-      const to = from + block.length
-      return { from, to, block }
+  const githubEmojiOptions = useMemo(
+    () => [
+      { shortcode: 'grinning', glyph: '\u{1F600}' },
+      { shortcode: 'smile', glyph: '\u{1F604}' },
+      { shortcode: 'joy', glyph: '\u{1F602}' },
+      { shortcode: 'rofl', glyph: '\u{1F923}' },
+      { shortcode: 'wink', glyph: '\u{1F609}' },
+      { shortcode: 'heart_eyes', glyph: '\u{1F60D}' },
+      { shortcode: 'thinking', glyph: '\u{1F914}' },
+      { shortcode: 'sunglasses', glyph: '\u{1F60E}' },
+      { shortcode: 'sob', glyph: '\u{1F62D}' },
+      { shortcode: 'scream', glyph: '\u{1F631}' },
+      { shortcode: 'fire', glyph: '\u{1F525}' },
+      { shortcode: 'rocket', glyph: '\u{1F680}' },
+      { shortcode: 'sparkles', glyph: '\u{2728}' },
+      { shortcode: 'tada', glyph: '\u{1F389}' },
+      { shortcode: 'white_check_mark', glyph: '\u{2705}' },
+      { shortcode: 'x', glyph: '\u{274C}' },
+      { shortcode: 'warning', glyph: '\u{26A0}\u{FE0F}' },
+      { shortcode: 'bug', glyph: '\u{1F41B}' },
+      { shortcode: 'memo', glyph: '\u{1F4DD}' },
+      { shortcode: 'eyes', glyph: '\u{1F440}' },
+      { shortcode: 'thumbsup', glyph: '\u{1F44D}' },
+      { shortcode: 'thumbsdown', glyph: '\u{1F44E}' },
+      { shortcode: 'clap', glyph: '\u{1F44F}' },
+      { shortcode: 'wave', glyph: '\u{1F44B}' },
+      { shortcode: 'pray', glyph: '\u{1F64F}' },
+    ],
+    []
+  )
+
+  const filteredEmojiOptions = useMemo(() => {
+    const query = emojiQuery.trim().toLowerCase()
+    if (!query) {
+      return githubEmojiOptions
+    }
+
+    return githubEmojiOptions.filter((emoji) => emoji.shortcode.includes(query))
+  }, [emojiQuery, githubEmojiOptions])
+
+  const recentEmojiOptions = useMemo(() => {
+    const byShortcode = new Map(githubEmojiOptions.map((emoji) => [emoji.shortcode, emoji]))
+    return recentEmojiShortcodes
+      .map((shortcode) => byShortcode.get(shortcode))
+      .filter((emoji): emoji is { shortcode: string; glyph: string } => Boolean(emoji))
+  }, [githubEmojiOptions, recentEmojiShortcodes])
+
+  const filteredRecentEmojiOptions = useMemo(() => {
+    const query = emojiQuery.trim().toLowerCase()
+    if (!query) {
+      return recentEmojiOptions
+    }
+
+    return recentEmojiOptions.filter((emoji) => emoji.shortcode.includes(query))
+  }, [emojiQuery, recentEmojiOptions])
+
+  const filteredRecentSet = useMemo(
+    () => new Set(filteredRecentEmojiOptions.map((emoji) => emoji.shortcode)),
+    [filteredRecentEmojiOptions]
+  )
+
+  const filteredOtherEmojiOptions = useMemo(
+    () => filteredEmojiOptions.filter((emoji) => !filteredRecentSet.has(emoji.shortcode)),
+    [filteredEmojiOptions, filteredRecentSet]
+  )
+
+  const headingAnchors = useMemo(() => {
+    const lines = value.split('\n')
+    let offset = 0
+    const anchors: Array<{ id: string; text: string; level: number; from: number; to: number }> = []
+
+    lines.forEach((line, index) => {
+      const match = /^(#{1,6})\s+(.+?)\s*$/.exec(line)
+      if (match) {
+        const level = match[1]?.length ?? 1
+        const text = match[2]?.trim() ?? `Heading ${index + 1}`
+        anchors.push({
+          id: `${offset}-${text}`,
+          text,
+          level,
+          from: offset,
+          to: offset + line.length,
+        })
+      }
+      offset += line.length + 1
     })
-    return { blocks, ranges }
-  }
 
-  const blockModel = useMemo(() => getBlocks(value), [value])
-  const activeBlockIndex = useMemo(() => {
-    if (blockModel.ranges.length === 0) {
+    return anchors
+  }, [value])
+
+  const activeHeadingIndex = useMemo(() => {
+    if (headingAnchors.length === 0) {
       return -1
     }
 
-    const found = blockModel.ranges.findIndex((range) => cursorPos >= range.from && cursorPos <= range.to)
-    return found >= 0 ? found : 0
-  }, [blockModel.ranges, cursorPos])
+    for (let index = headingAnchors.length - 1; index >= 0; index -= 1) {
+      if (cursorPos >= headingAnchors[index].from) {
+        return index
+      }
+    }
+
+    return 0
+  }, [cursorPos, headingAnchors])
+
+  const activeHeadingTrail = useMemo(() => {
+    if (activeHeadingIndex < 0) {
+      return ''
+    }
+
+    const trail: Array<{ level: number; text: string }> = []
+    for (let index = 0; index <= activeHeadingIndex; index += 1) {
+      const heading = headingAnchors[index]
+      while (trail.length > 0 && trail[trail.length - 1].level >= heading.level) {
+        trail.pop()
+      }
+      trail.push({ level: heading.level, text: heading.text })
+    }
+
+    return trail.map((entry) => entry.text).join(' / ')
+  }, [activeHeadingIndex, headingAnchors])
+
+  const editorBreadcrumbs = activeHeadingTrail
+    ? `${breadcrumbFile ?? 'Sin archivo seleccionado'} / ${activeHeadingTrail}`
+    : (breadcrumbFile ?? 'Sin archivo seleccionado')
 
   const getCurrentBlockRange = () => {
     const view = viewRef.current
@@ -109,61 +234,6 @@ export const EditorPane = ({
     const from = prevBreak >= 0 ? prevBreak + 2 : 0
     const to = nextBreak >= 0 ? nextBreak : content.length
     return { from, to, content }
-  }
-
-  const selectBlockByIndex = (index: number) => {
-    const view = viewRef.current
-    const range = blockModel.ranges[index]
-    if (!view || !range) {
-      return
-    }
-
-    view.dispatch({
-      selection: { anchor: range.from, head: range.to },
-      scrollIntoView: true,
-    })
-    view.focus()
-  }
-
-  const moveBlockByIndex = (fromIndex: number, toIndex: number) => {
-    const view = viewRef.current
-    if (!view) {
-      return
-    }
-
-    const { blocks } = getBlocks(view.state.doc.toString())
-    if (fromIndex < 0 || toIndex < 0 || fromIndex >= blocks.length || toIndex >= blocks.length) {
-      return
-    }
-
-    const nextBlocks = [...blocks]
-    const [moved] = nextBlocks.splice(fromIndex, 1)
-    nextBlocks.splice(toIndex, 0, moved)
-    const nextContent = nextBlocks.join('\n\n')
-
-    view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: nextContent },
-      scrollIntoView: true,
-    })
-    view.focus()
-  }
-
-  const handleBlockDragStart = (index: number) => {
-    setDraggingBlockIndex(index)
-  }
-
-  const handleBlockDragOver = (event: DragEvent<HTMLButtonElement>) => {
-    event.preventDefault()
-  }
-
-  const handleBlockDrop = (toIndex: number) => {
-    if (draggingBlockIndex === null || draggingBlockIndex === toIndex) {
-      setDraggingBlockIndex(null)
-      return
-    }
-
-    moveBlockByIndex(draggingBlockIndex, toIndex)
-    setDraggingBlockIndex(null)
   }
 
   const dispatchBlockText = (nextBlock: string) => {
@@ -261,6 +331,17 @@ export const EditorPane = ({
     dispatchBlockText(next)
   }
 
+  const setHeadingLevel = (level: 1 | 2 | 3) => {
+    const range = getCurrentBlockRange()
+    if (!range) {
+      return
+    }
+
+    const current = range.content.slice(range.from, range.to)
+    const clean = current.replace(/^#{1,6}\s+/, '')
+    dispatchBlockText(`${'#'.repeat(level)} ${clean}`)
+  }
+
   const toggleList = () => {
     const range = getCurrentBlockRange()
     if (!range) {
@@ -319,6 +400,54 @@ export const EditorPane = ({
       })
       .join('\n')
     dispatchBlockText(next)
+  }
+
+  const insertLinkTemplate = () => {
+    const view = viewRef.current
+    if (!view) {
+      return
+    }
+
+    const selection = view.state.selection.main
+    const selectedText = view.state.doc.sliceString(selection.from, selection.to) || 'texto'
+    const insert = `[${selectedText}](https://)`
+    view.dispatch({
+      changes: { from: selection.from, to: selection.to, insert },
+      selection: { anchor: selection.from + insert.length },
+      scrollIntoView: true,
+    })
+    view.focus()
+  }
+
+  const insertEmoji = (shortcode: string) => {
+    const view = viewRef.current
+    if (!view) {
+      return
+    }
+
+    const position = view.state.selection.main.head
+    const previousChar = position > 0 ? view.state.doc.sliceString(position - 1, position) : ''
+    const spacer = previousChar && /\s/.test(previousChar) ? '' : ' '
+    const insertion = `${spacer}:${shortcode}:`
+    view.dispatch({
+      changes: { from: position, to: position, insert: insertion },
+      selection: { anchor: position + insertion.length },
+      scrollIntoView: true,
+    })
+
+    setRecentEmojiShortcodes((current) => {
+      const next = [shortcode, ...current.filter((item) => item !== shortcode)].slice(0, MAX_RECENT_EMOJIS)
+      try {
+        window.localStorage.setItem(EMOJI_RECENTS_STORAGE_KEY, JSON.stringify(next))
+      } catch {
+        // no-op
+      }
+      return next
+    })
+
+    view.focus()
+    setEmojiMenuOpen(false)
+    setEmojiQuery('')
   }
 
   const slashActions = [
@@ -382,15 +511,73 @@ export const EditorPane = ({
     onJumpHandled()
   }, [jumpRequest, onJumpHandled])
 
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(EMOJI_RECENTS_STORAGE_KEY)
+      if (!raw) {
+        return
+      }
+
+      const parsed = JSON.parse(raw)
+      if (!Array.isArray(parsed)) {
+        return
+      }
+
+      const valid = parsed
+        .filter((item): item is string => typeof item === 'string')
+        .slice(0, MAX_RECENT_EMOJIS)
+
+      if (valid.length > 0) {
+        setRecentEmojiShortcodes(valid)
+      }
+    } catch {
+      // no-op
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!emojiMenuOpen) {
+      return
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null
+      if (!target) {
+        return
+      }
+      if (emojiMenuRef.current?.contains(target)) {
+        return
+      }
+      setEmojiMenuOpen(false)
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setEmojiMenuOpen(false)
+      }
+    }
+
+    window.addEventListener('mousedown', handlePointerDown)
+    window.addEventListener('keydown', handleEscape)
+
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown)
+      window.removeEventListener('keydown', handleEscape)
+    }
+  }, [emojiMenuOpen])
+
   return (
     <section className="h-full border-l border-canvas-200" style={{ background: 'var(--editor-bg)' }}>
       <div className="flex h-full flex-col">
         <div className="flex items-center gap-2 border-b border-canvas-200 px-3 py-2 text-xs text-ink-600">
-          <button className="rounded border border-canvas-200 px-2 py-1 hover:bg-canvas-100" type="button" onClick={() => moveBlock('up')}>
-            <ChevronUp size={14} />
+          <button className="rounded border border-canvas-200 px-2 py-1 hover:bg-canvas-100" type="button" onClick={() => setHeadingLevel(1)}>
+            <Heading1 size={14} />
           </button>
-          <button className="rounded border border-canvas-200 px-2 py-1 hover:bg-canvas-100" type="button" onClick={() => moveBlock('down')}>
-            <ChevronDown size={14} />
+          <button className="rounded border border-canvas-200 px-2 py-1 hover:bg-canvas-100" type="button" onClick={() => setHeadingLevel(2)}>
+            <Heading2 size={14} />
+          </button>
+          <button className="rounded border border-canvas-200 px-2 py-1 hover:bg-canvas-100" type="button" onClick={() => setHeadingLevel(3)}>
+            <Heading3 size={14} />
           </button>
           <button className="rounded border border-canvas-200 px-2 py-1 hover:bg-canvas-100" type="button" onClick={duplicateBlock}>
             <Copy size={14} />
@@ -398,35 +585,87 @@ export const EditorPane = ({
           <button className="rounded border border-canvas-200 px-2 py-1 hover:bg-canvas-100" type="button" onClick={deleteBlock}>
             <Trash2 size={14} />
           </button>
-          <button className="rounded border border-canvas-200 px-2 py-1 hover:bg-canvas-100" type="button" onClick={toggleHeading}>
-            <Heading2 size={14} />
-          </button>
           <button className="rounded border border-canvas-200 px-2 py-1 hover:bg-canvas-100" type="button" onClick={toggleList}>
             <List size={14} />
           </button>
-          <span className="ml-2 text-ink-500">Bloque activo</span>
-          <span className="ml-auto text-[10px] text-ink-400">⌥⇧↑/↓ mover · ⌘⇧D duplicar · ⌘⇧H heading · ⌘⇧L lista</span>
-        </div>
-        <div className="flex gap-2 overflow-x-auto border-b border-canvas-200 px-3 py-2">
-          {blockModel.blocks.map((block, index) => (
+          <button className="rounded border border-canvas-200 px-2 py-1 hover:bg-canvas-100" type="button" onClick={convertToChecklist}>
+            <ListChecks size={14} />
+          </button>
+          <button className="rounded border border-canvas-200 px-2 py-1 hover:bg-canvas-100" type="button" onClick={convertToQuote}>
+            <MessageSquareQuote size={14} />
+          </button>
+          <button className="rounded border border-canvas-200 px-2 py-1 hover:bg-canvas-100" type="button" onClick={convertToCodeBlock}>
+            <SquareCode size={14} />
+          </button>
+          <button className="rounded border border-canvas-200 px-2 py-1 hover:bg-canvas-100" type="button" onClick={insertLinkTemplate}>
+            <Link size={14} />
+          </button>
+          <div className="relative" ref={emojiMenuRef}>
             <button
-              key={`${index}-${block.slice(0, 18)}`}
-              className={`max-w-[220px] shrink-0 rounded border px-2 py-1 text-left text-[11px] hover:bg-canvas-100 ${
-                index === activeBlockIndex
-                  ? 'border-canvas-200/60 bg-canvas-100/20 text-ink-700'
-                  : 'border-canvas-200 bg-canvas-50 text-ink-700'
-              }`}
+              className="rounded border border-canvas-200 px-2 py-1 hover:bg-canvas-100"
               type="button"
-              draggable
-              onDragStart={() => handleBlockDragStart(index)}
-              onDragOver={handleBlockDragOver}
-              onDrop={() => handleBlockDrop(index)}
-              onClick={() => selectBlockByIndex(index)}
-              data-testid={`block-chip-${index}`}
+              onClick={() => {
+                setEmojiMenuOpen((current) => !current)
+                setEmojiQuery('')
+              }}
             >
-              {block.trim().slice(0, 80) || `Bloque ${index + 1}`}
+              <SmilePlus size={14} />
             </button>
-          ))}
+            {emojiMenuOpen ? (
+              <div className="absolute right-0 top-9 z-40 w-80 rounded-xl border border-canvas-200 bg-white p-2 shadow-soft">
+                <input
+                  value={emojiQuery}
+                  onChange={(event) => setEmojiQuery(event.target.value)}
+                  placeholder="Buscar emoji github..."
+                  className="mb-2 w-full rounded-md border border-canvas-200 px-2 py-1 text-xs text-ink-700 outline-none focus:border-canvas-300"
+                  type="text"
+                />
+                <div className="grid max-h-56 grid-cols-2 gap-1 overflow-y-auto pr-1">
+                  {filteredRecentEmojiOptions.length > 0 ? (
+                    <span className="col-span-2 px-2 pt-1 text-[10px] uppercase tracking-wide text-ink-500">
+                      Recientes
+                    </span>
+                  ) : null}
+                  {filteredRecentEmojiOptions.map((emoji) => (
+                    <button
+                      key={`recent-${emoji.shortcode}`}
+                      type="button"
+                      className="flex items-center gap-2 rounded-md border border-canvas-200/80 bg-canvas-50 px-2 py-1.5 text-left text-xs text-ink-700 hover:bg-canvas-100"
+                      onClick={() => insertEmoji(emoji.shortcode)}
+                    >
+                      <span className="text-base leading-none">{emoji.glyph}</span>
+                      <span className="truncate">:{emoji.shortcode}:</span>
+                    </button>
+                  ))}
+                  {filteredRecentEmojiOptions.length > 0 ? (
+                    <span className="col-span-2 mt-1 px-2 pt-1 text-[10px] uppercase tracking-wide text-ink-500">
+                      Todos
+                    </span>
+                  ) : null}
+                  {filteredOtherEmojiOptions.map((emoji) => (
+                    <button
+                      key={emoji.shortcode}
+                      type="button"
+                      className="flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-ink-700 hover:bg-canvas-100"
+                      onClick={() => insertEmoji(emoji.shortcode)}
+                    >
+                      <span className="text-base leading-none">{emoji.glyph}</span>
+                      <span className="truncate">:{emoji.shortcode}:</span>
+                    </button>
+                  ))}
+                  {filteredRecentEmojiOptions.length === 0 && filteredOtherEmojiOptions.length === 0 ? (
+                    <span className="col-span-2 px-2 py-3 text-center text-xs text-ink-500">Sin resultados</span>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
+          </div>
+          <span className="ml-auto text-[10px] text-ink-400">⌘⇧D duplicar · ⌘⇧H heading · ⌘⇧L lista · ⌘Space autocomplete</span>
+        </div>
+        <div className="border-b border-canvas-200 px-3 py-2">
+          <p className="truncate text-[11px] tracking-wide text-ink-500" title={editorBreadcrumbs} data-testid="editor-breadcrumbs">
+            {editorBreadcrumbs}
+          </p>
         </div>
         <div ref={editorRef} className="relative h-full overflow-hidden" data-testid="markdown-editor">
           <CodeMirror

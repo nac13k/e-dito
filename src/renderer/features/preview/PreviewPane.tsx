@@ -19,6 +19,8 @@ type PreviewPaneProps = {
   onInsertBlockBelow: (index: number) => void
   onMergeBlockWithPrevious: (index: number) => void
   onNavigateBlock: (index: number, direction: 'up' | 'down') => void
+  onOpenLink: (href: string) => void
+  onToggleTaskCheckbox: (blockIndex: number, taskIndex: number, checked: boolean) => void
   editCaretPlacement: 'start' | 'end'
   editCaretNonce: number
 }
@@ -34,6 +36,8 @@ export const PreviewPane = ({
   onInsertBlockBelow,
   onMergeBlockWithPrevious,
   onNavigateBlock,
+  onOpenLink,
+  onToggleTaskCheckbox,
   editCaretPlacement,
   editCaretNonce,
 }: PreviewPaneProps) => {
@@ -52,7 +56,8 @@ export const PreviewPane = ({
       return
     }
 
-    const nodes = container.querySelectorAll<HTMLElement>('.mermaid')
+    const nodes = Array.from(container.querySelectorAll<HTMLElement>('.mermaid'))
+      .filter((node) => node.isConnected)
     if (nodes.length === 0) {
       return
     }
@@ -60,7 +65,31 @@ export const PreviewPane = ({
     const theme =
       document.documentElement.dataset.mermaidTheme === 'dark' ? 'dark' : 'neutral'
     mermaid.initialize({ startOnLoad: false, theme })
-    mermaid.run({ nodes: Array.from(nodes) })
+
+    let cancelled = false
+    const frameId = window.requestAnimationFrame(() => {
+      if (cancelled) {
+        return
+      }
+
+      const connectedNodes = nodes.filter((node) => node.isConnected && container.contains(node))
+      if (connectedNodes.length === 0) {
+        return
+      }
+
+      void mermaid.run({ nodes: connectedNodes }).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error)
+        if (message.includes('getBoundingClientRect')) {
+          return
+        }
+        console.error('[preview] mermaid render error', error)
+      })
+    })
+
+    return () => {
+      cancelled = true
+      window.cancelAnimationFrame(frameId)
+    }
   }, [blocks, previewRef])
 
   useEffect(() => {
@@ -79,9 +108,10 @@ export const PreviewPane = ({
 
     const position = editCaretPlacement === 'start' ? 0 : textarea.value.length
     fitTextareaHeight(textarea)
+    textarea.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' })
     textarea.setSelectionRange(position, position)
     textarea.focus()
-  }, [blocks, editCaretNonce, editCaretPlacement])
+  }, [editCaretNonce, editCaretPlacement])
 
   const handleBlockKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>, index: number) => {
     if (event.key === 'Escape') {
@@ -141,6 +171,32 @@ export const PreviewPane = ({
         className="markdown-body mx-auto h-full max-w-4xl overflow-y-auto space-y-2 text-sm leading-7 text-ink-800"
         data-testid="markdown-preview"
         onScroll={(event) => onScroll(event.currentTarget.scrollTop)}
+        onClick={(event) => {
+          const target = event.target as HTMLElement | null
+          if (target instanceof HTMLInputElement && target.type === 'checkbox') {
+            const article = target.closest<HTMLElement>('article[data-block-index]')
+            const blockIndexRaw = article?.dataset.blockIndex
+            const taskIndexRaw = target.dataset.taskIndex
+            const blockIndex = Number(blockIndexRaw)
+            const taskIndex = Number(taskIndexRaw)
+
+            if (!Number.isNaN(blockIndex) && !Number.isNaN(taskIndex)) {
+              event.stopPropagation()
+              onToggleTaskCheckbox(blockIndex, taskIndex, target.checked)
+            }
+            return
+          }
+
+          const anchor = target?.closest('a')
+          const href = anchor?.getAttribute('href')
+          if (!href) {
+            return
+          }
+
+          event.preventDefault()
+          event.stopPropagation()
+          onOpenLink(href)
+        }}
         ref={previewRef}
       >
         {blocks.map((block) => (
@@ -152,7 +208,14 @@ export const PreviewPane = ({
                 : 'border border-transparent px-3 py-2 hover:bg-canvas-100/20'
             }`}
             data-testid={`preview-block-${block.index}`}
-            onClick={() => onSelectBlock(block.index)}
+            data-block-index={block.index}
+            onClick={(event) => {
+              const target = event.target as HTMLElement | null
+              if (target?.closest('a') || target instanceof HTMLInputElement) {
+                return
+              }
+              onSelectBlock(block.index)
+            }}
           >
             {block.isEditing ? (
               <textarea

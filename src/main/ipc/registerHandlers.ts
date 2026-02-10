@@ -17,7 +17,9 @@ import {
   clearWorkspaceHistory,
   getValidLastWorkspace,
   getValidRecentWorkspaces,
+  setConfirmExternalLinks,
   setLastWorkspacePath,
+  shouldConfirmExternalLinks,
 } from '../workspaceConfig.js'
 
 type WorkspaceTreeFile = {
@@ -753,6 +755,55 @@ export const registerIpcHandlers = (options: RegisterIpcHandlersOptions = {}) =>
       return
     }
     shell.showItemInFolder(targetPath)
+  })
+
+  ipcMain.handle('external:open-url', async (event, url: string) => {
+    if (!url) {
+      return { opened: false }
+    }
+
+    const confirmExternal = await shouldConfirmExternalLinks()
+    if (!confirmExternal) {
+      await shell.openExternal(url)
+      return { opened: true }
+    }
+
+    const win = getWindowFromEvent(event)
+    const result = win
+      ? await dialog.showMessageBox(win, {
+          type: 'question',
+          title: 'Abrir enlace externo',
+          message: 'Este enlace se abrira en tu navegador por defecto.',
+          detail: url,
+          buttons: ['Abrir enlace', 'Cancelar'],
+          defaultId: 0,
+          cancelId: 1,
+          checkboxLabel: 'No volver a preguntar',
+          checkboxChecked: false,
+        })
+      : await dialog.showMessageBox({
+          type: 'question',
+          title: 'Abrir enlace externo',
+          message: 'Este enlace se abrira en tu navegador por defecto.',
+          detail: url,
+          buttons: ['Abrir enlace', 'Cancelar'],
+          defaultId: 0,
+          cancelId: 1,
+          checkboxLabel: 'No volver a preguntar',
+          checkboxChecked: false,
+        })
+
+    const shouldOpen = result.response === 0
+    if (shouldOpen && result.checkboxChecked) {
+      await setConfirmExternalLinks(false)
+    }
+
+    if (!shouldOpen) {
+      return { opened: false }
+    }
+
+    await shell.openExternal(url)
+    return { opened: true }
   })
 
   ipcMain.handle('export:pdf', async (event, payload: ExportPdfPayload) => {

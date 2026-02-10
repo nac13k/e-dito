@@ -8,6 +8,7 @@ const RECENT_WORKSPACES_LIMIT = 10
 export type WorkspaceConfig = {
   lastWorkspacePath: string | null
   recentWorkspacePaths: string[]
+  confirmExternalLinks: boolean
 }
 
 const normalizePath = (value: string) => value.trim()
@@ -56,11 +57,14 @@ export const readWorkspaceConfig = async (): Promise<WorkspaceConfig> => {
     return {
       lastWorkspacePath,
       recentWorkspacePaths: sanitizeRecent(parsed.recentWorkspacePaths),
+      confirmExternalLinks:
+        typeof parsed.confirmExternalLinks === 'boolean' ? parsed.confirmExternalLinks : true,
     }
   } catch {
     return {
       lastWorkspacePath: null,
       recentWorkspacePaths: [],
+      confirmExternalLinks: true,
     }
   }
 }
@@ -113,6 +117,7 @@ export const setLastWorkspacePath = async (workspacePath: string | null) => {
   const nextConfig: WorkspaceConfig = {
     lastWorkspacePath: nextPath,
     recentWorkspacePaths: nextRecent,
+    confirmExternalLinks: config.confirmExternalLinks,
   }
 
   await writeWorkspaceConfig(nextConfig)
@@ -123,8 +128,24 @@ export const clearWorkspaceHistory = async () => {
   const emptyConfig: WorkspaceConfig = {
     lastWorkspacePath: null,
     recentWorkspacePaths: [],
+    confirmExternalLinks: true,
   }
 
   await writeWorkspaceConfig(emptyConfig)
   return emptyConfig
+}
+
+export const shouldConfirmExternalLinks = async () => {
+  const config = await readWorkspaceConfig()
+  return config.confirmExternalLinks
+}
+
+export const setConfirmExternalLinks = async (value: boolean) => {
+  const config = await readWorkspaceConfig()
+  const nextConfig: WorkspaceConfig = {
+    ...config,
+    confirmExternalLinks: value,
+  }
+  await writeWorkspaceConfig(nextConfig)
+  return nextConfig
 }

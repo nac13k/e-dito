@@ -39,10 +39,12 @@ const normalizeMarkdownInput = (source: string) =>
     })
     .join('\n')
 
-const withTaskCheckboxes = (html: string) =>
-  html
-    .replace(/<li>\s*\[ \]\s+/g, '<li><input type="checkbox" disabled /> ')
-    .replace(/<li>\s*\[(x|X)\]\s+/g, '<li><input type="checkbox" disabled checked /> ')
+const withTaskCheckboxes = (html: string) => {
+  let taskIndex = 0
+  return html.replace(/<li>\s*\[([ xX])\]\s+/g, (_full, marker: string) => (
+    `<li><input type="checkbox" data-task-index="${taskIndex++}"${marker.toLowerCase() === 'x' ? ' checked' : ''} /> `
+  ))
+}
 
 const toDisplayName = (fileName: string) => fileName.replace(/\.(md|markdown|mdx|txt)$/i, '')
 const isExternalHref = (href: string) => /^(https?:|mailto:|tel:|data:|file:)/i.test(href)
@@ -461,6 +463,46 @@ const App = () => {
       .split('\\')
       .join('/')
 
+  const toNormalizedPath = (targetPath: string) => {
+    const unified = targetPath.replace(/\\/g, '/')
+    const parts = unified.split('/')
+    const normalized: string[] = []
+
+    parts.forEach((part, index) => {
+      if (!part || part === '.') {
+        if (index === 0 && unified.startsWith('/')) {
+          normalized.push('')
+        }
+        return
+      }
+      if (part === '..') {
+        if (normalized.length > 1 || (normalized.length === 1 && normalized[0] !== '')) {
+          normalized.pop()
+        }
+        return
+      }
+      normalized.push(part)
+    })
+
+    return normalized.join('/')
+  }
+
+  const dirnameOfPath = (targetPath: string) => {
+    const slashIndex = Math.max(targetPath.lastIndexOf('/'), targetPath.lastIndexOf('\\'))
+    return slashIndex >= 0 ? targetPath.slice(0, slashIndex) : targetPath
+  }
+
+  const resolveWorkspaceLinkPath = (linkPath: string, sourcePath: string, workspaceRoot: string) => {
+    const isWindows = workspaceRoot.includes('\\')
+    const separator = isWindows ? '\\' : '/'
+    const sanitized = decodeURIComponent(linkPath)
+    const startsAtRoot = sanitized.startsWith('/') || sanitized.startsWith('\\')
+    const base = startsAtRoot ? workspaceRoot : dirnameOfPath(sourcePath)
+    const withoutLeadingSlashes = sanitized.replace(/^[/\\]+/, '')
+
+    return toNormalizedPath(`${base}${separator}${withoutLeadingSlashes}`)
+  }
+
   const loadWorkspaceTree = useCallback(async (targetPath: string, preferredActiveId: string | null) => {
     const tree = await window.api.readWorkspaceTree(targetPath)
     const nextFolders: ExplorerFolder[] = tree.map((folder) => ({
@@ -574,6 +616,87 @@ const App = () => {
     setActiveEditBlockIndex(null)
     setViewMode('preview')
   }
+
+  const handleOpenPreviewLink = useCallback(async (href: string) => {
+    const target = href.trim()
+    if (!target) {
+      return
+    }
+
+    const hasScheme = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(target)
+    if (target.startsWith('#') || !workspacePath || !activeFileId) {
+      if (hasScheme) {
+        await window.api.openExternalUrl(target)
+      }
+      return
+    }
+
+    const sourcePath = filePaths[activeFileId]
+    if (!sourcePath) {
+      return
+    }
+
+    const candidatePaths: string[] = []
+
+    if (hasScheme) {
+      if (target.toLowerCase().startsWith('file:')) {
+        try {
+          const parsed = new URL(target)
+          const decodedPath = decodeURIComponent(parsed.pathname)
+          const normalizedFilePath = toNormalizedPath(
+            /^\/[a-zA-Z]:\//.test(decodedPath) ? decodedPath.slice(1) : decodedPath
+          )
+          candidatePaths.push(normalizedFilePath)
+        } catch {
+          // ignore invalid file URL and fallback to external handling below
+        }
+      }
+    } else {
+      const linkPathOnly = target.split('#')[0]?.split('?')[0] ?? ''
+      if (linkPathOnly) {
+        candidatePaths.push(resolveWorkspaceLinkPath(linkPathOnly, sourcePath, workspacePath))
+      }
+    }
+
+    const linkedEntry = Object.entries(filePaths).find(([fileId, filePath]) =>
+      fileKinds[fileId] === 'markdown'
+      && candidatePaths.some((candidatePath) => toNormalizedPath(filePath) === candidatePath)
+    )
+
+    if (linkedEntry) {
+      await handleSelectFile(linkedEntry[0])
+      return
+    }
+
+    if (hasScheme) {
+      await window.api.openExternalUrl(target)
+    }
+  }, [activeFileId, fileKinds, filePaths, handleSelectFile, workspacePath])
+
+  const handleTogglePreviewTaskCheckbox = useCallback((blockIndex: number, taskIndex: number, checked: boolean) => {
+    const blocks = markdown.split('\n\n')
+    const targetBlock = blocks[blockIndex]
+    if (typeof targetBlock !== 'string') {
+      return
+    }
+
+    let seenTasks = 0
+    const nextBlock = targetBlock.replace(/^(\s*[-*+]\s+)\[([ xX])\]/gm, (full, prefix: string) => {
+      if (seenTasks === taskIndex) {
+        seenTasks += 1
+        return `${prefix}[${checked ? 'x' : ' '}]`
+      }
+      seenTasks += 1
+      return full
+    })
+
+    if (seenTasks <= taskIndex) {
+      return
+    }
+
+    blocks[blockIndex] = nextBlock
+    updateMarkdown(blocks.join('\n\n'), true, { source: 'preview' })
+  }, [markdown])
 
   const handleExportFile = async () => {
     const activePath = activeFileId ? filePaths[activeFileId] : null
@@ -1124,6 +1247,7 @@ const App = () => {
           ) : (
             <EditorPane
               value={markdown}
+              breadcrumbFile={activeFileId}
               onChange={(value) => updateMarkdown(value)}
               onScroll={handleEditorScroll}
               editorRef={editorRef}
@@ -1137,6 +1261,12 @@ const App = () => {
             breadcrumbs={previewBreadcrumbs}
             onScroll={handlePreviewScroll}
             previewRef={previewRef}
+            onOpenLink={(href) => {
+              void handleOpenPreviewLink(href)
+            }}
+            onToggleTaskCheckbox={(index, taskIndex, checked) => {
+              handleTogglePreviewTaskCheckbox(index, taskIndex, checked)
+            }}
             onSelectBlock={(index) => {
               setActiveEditBlockIndex(index)
               setEditSnapshotBlocks(markdownBlocks)

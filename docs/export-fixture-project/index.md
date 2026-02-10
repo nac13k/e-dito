@@ -16,6 +16,8 @@ Este proyecto de prueba valida exportacion PDF con:
 - [Integraciones](./architecture/integration.md)
 - [Checklist operativa](./operations/checklist.md)
 
+:joy:
+
 ## Anchors internos
 
 - [Ir a Mermaid principal](#mermaid-principal)
@@ -28,6 +30,8 @@ Este proyecto de prueba valida exportacion PDF con:
 ## Imagen remota (internet)
 
 ![Logo remoto](https://upload.wikimedia.org/wikipedia/commons/a/a7/React-icon.svg)
+
+[Logo remoto](https://upload.wikimedia.org/wikipedia/commons/a/a7/React-icon.svg)
 
 ## Mermaid principal
 

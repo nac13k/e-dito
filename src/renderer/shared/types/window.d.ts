@@ -39,6 +39,7 @@ declare global {
         destinationFolderPath: string
       }) => Promise<string>
       revealInFinder: (path: string) => Promise<void>
+      openExternalUrl: (url: string) => Promise<{ opened: boolean }>
       exportPdfFile: (payload: {
         title: string
         markdown: string

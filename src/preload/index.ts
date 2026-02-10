@@ -77,6 +77,8 @@ const api = {
   }) => ipcRenderer.invoke('workspace:file:duplicate', payload) as Promise<string>,
   revealInFinder: (path: string) =>
     ipcRenderer.invoke('workspace:reveal', path) as Promise<void>,
+  openExternalUrl: (url: string) =>
+    ipcRenderer.invoke('external:open-url', url) as Promise<{ opened: boolean }>,
   exportPdfFile: (payload: {
     title: string
     markdown: string

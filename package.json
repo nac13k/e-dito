@@ -8,11 +8,11 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:preload\" \"npm:dev:main\" \"npm:dev:electron\"",
-    "dev:renderer": "vite",
+    "dev:renderer": "vite --port 3137 --strictPort",
     "dev:preload": "tsc -p tsconfig.preload.json --watch --preserveWatchOutput",
     "dev:main": "tsc -p tsconfig.main.json --watch --preserveWatchOutput",
-    "dev:electron": "wait-on http://localhost:5173 file:dist/main/index.js file:dist/preload/index.js && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
-    "dev:electron:quiet": "wait-on http://localhost:5173 file:dist/main/index.js file:dist/preload/index.js && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 ELECTRON_DEVTOOLS=false electron .",
+    "dev:electron": "wait-on http://localhost:3137 file:dist/main/index.js file:dist/preload/index.js && cross-env VITE_DEV_SERVER_URL=http://localhost:3137 electron .",
+    "dev:electron:quiet": "wait-on http://localhost:3137 file:dist/main/index.js file:dist/preload/index.js && cross-env VITE_DEV_SERVER_URL=http://localhost:3137 ELECTRON_DEVTOOLS=false electron .",
     "build": "npm run build:renderer && npm run build:main",
     "icons:generate": "node scripts/generate-icons.mjs",
     "build:local": "node scripts/build-local.mjs",
@@ -23,7 +23,7 @@
     "preview": "vite preview",
     "cy:open": "cypress open",
     "cy:run": "cypress run",
-    "cy:run:dev": "concurrently -k \"vite --port 5173 --strictPort\" \"wait-on http://localhost:5173 && cypress run\""
+    "cy:run:dev": "concurrently -k \"vite --port 3137 --strictPort\" \"wait-on http://localhost:3137 && cypress run\""
   },
   "dependencies": {
     "@codemirror/lang-markdown": "^6.5.0",

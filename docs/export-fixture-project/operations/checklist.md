@@ -11,8 +11,8 @@
 
 ## Tareas
 
-- [ ] Confirmar links internos
-- [ ] Confirmar imagenes locales
+- [x] Confirmar links internos
+- [x] Confirmar imagenes locales
 - [ ] Confirmar imagen remota
 - [ ] Confirmar Mermaid
 
