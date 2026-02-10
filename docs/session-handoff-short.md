@@ -1,19 +1,26 @@
 # Session Handoff (Short)
 
-Last updated: 2026-02-09
+Last updated: 2026-02-10
 
-- Product is now desktop-first Electron app branded as **E-Dito**.
-- IPC + workspace/file operations are implemented (select/read/write/tree/create/delete/duplicate/reveal/export).
-- Workspace persistence (last opened folder) is implemented.
-- Explorer supports nested folders, collapse/expand, markdown + assets, icons, and `Cmd/Ctrl+P` quick open.
-- Editor moved to CodeMirror; preview-first hybrid block editing is active (inline block edit, debounce save, blur flush, block nav/merge/insert shortcuts).
-- Export pipeline renders markdown to consolidated PDF (file/folder/project), with Mermaid, emoji, link rewriting, local image embedding, and linked markdown inclusion.
-- UI polish completed (titlebar drag fixes, text-selection constraints, dark theme tuning, compact breadcrumbs).
-- Icons and packaging pipeline were added (`generate-icons`, `build-final`, `build-local`, CI workflow for main builds and artifact upload).
-- Latest packaging fix addressed semver/version + artifact template escaping; local `npm run build:local` passes on mac.
-- Important: some commits may still have wrong author email (`francisco.lumbreras@kredi.mx` vs `nac13k@gmail.com`).
+1. App is desktop-first Electron + React + Vite + TypeScript.
+2. Native menu is in place (File/Edit/Window/Help) with open workspace, recents, and clear recents.
+3. Recent workspace history persists in Electron `userData/workspace.json`.
+4. Explorer UX was refined (clearer indentation, removed top header/path, path shown on hover tooltip only).
+5. Context-menu delete now targets the right-clicked item and sends to Trash (`shell.trashItem`).
+6. Editor improved with markdown toolbar updates, emoji picker, shortcode insertion, and emoji recents persistence.
+7. Editor + preview include extra bottom reading space; preview block edit/caret behavior is stabilized.
+8. Preview links: internal links open in-app; external links require confirmation with remember preference.
+9. App-wide i18n is implemented (`es-MX`, `en-US`) with OS default, persisted preference, and menu language switching.
+10. Latest commits: `7859956` and `3e4eea6`; one unrelated unstaged docs change may still exist.
 
-Recommended next checks:
+Tracking files include:
+- `docs/session-handoff.md`
+- `docs/session-handoff-short.md`
+- `.agents/skills/agentmd-creator/SKILL.md`
+- `.agents/skills/cypress/SKILL.md`
+- `.agents/skills/e2e-testing-patterns/SKILL.md`
+- `.opencode/agents/builder.md`
+
+Recommended checks:
 - `npm run build:main`
 - `npm run build:renderer`
-- `npm run build:local`

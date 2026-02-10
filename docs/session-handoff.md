@@ -1,134 +1,110 @@
 # Session Handoff (Long)
 
-Last updated: 2026-02-09
+Last updated: 2026-02-10
 
 This file captures the latest implementation context for new OpenCode sessions.
 
 ## Current product state
-- App is desktop-first (Electron). Browser fallback behavior was removed.
-- App branding is now **E-Dito**.
-- Dark, minimal UI tuning is in place.
+- App is desktop-first (Electron shell + React renderer).
+- Workspace-driven markdown editing flow is stable.
+- i18n is enabled app-wide with English and Spanish.
 
 ## Major implemented work
 
-### 1) Desktop behavior and IPC
-- Preload loading issue was fixed by compiling preload as CommonJS (`tsconfig.preload.json`).
-- IPC coverage includes workspace selection, file tree read, file read/write, create/delete/duplicate file, create folder, reveal in Finder, and PDF export operations.
-- Workspace persistence was added (save/load last opened workspace in `userData` config).
+### 1) Desktop behavior and app menu
+- Native app menu implemented in main process:
+  - File / Edit / Window / Help
+  - Open workspace
+  - Open recent workspace
+  - Clear recent workspaces
+  - Standard edit actions (undo/redo/cut/copy/paste, paste plain)
+- Recent workspace list persists in Electron `userData` config (`workspace.json`).
 
-### 2) Workspace and Explorer
-- Workspace picker opens a real filesystem folder.
-- Explorer reads nested folder/file tree from disk.
-- Hierarchy metadata (`parentId`, `depth`) was added and rendering fixed.
-- Folder collapse/expand behavior was added.
-- Root workspace context is shown in explorer.
-- Quick file open/search via `Cmd/Ctrl+P`.
-- Workspace pill shows folder name, full path on hover, and reveals Finder on click.
-- Explorer supports markdown and assets (`kind: markdown | asset`) with file-type icons/colors.
+### 2) Workspace and explorer UX
+- Explorer indentation and hierarchy readability were improved.
+- Explorer top title/project/full-path header was removed.
+- File/folder full path is now shown only via hover tooltip.
+- Right-click delete target bug was fixed (acts on clicked file, not active file).
+- File deletion now moves files to Trash (`shell.trashItem`) instead of hard delete.
 
-### 3) Editor and preview
-- Editor migrated to CodeMirror (syntax highlighting + dark theme).
-- Markdown flow is preview-first.
-- Hybrid block editing is implemented:
-  - click preview block to edit raw markdown inline
-  - debounced save while typing + flush on blur
-  - `Esc` exits block edit
-  - `Cmd/Ctrl+Enter` inserts block below
-  - `Backspace` at block start merges with previous block
-  - `ArrowUp/ArrowDown` boundary navigation across blocks
-  - double-newline preserved as intentional split on blur
-- Compact breadcrumbs line added in preview:
-  - relative file path first
-  - active heading hierarchy trail
-- Dark highlight intensity and edit-area spacing were reduced.
+### 3) Editor and preview improvements
+- CodeMirror markdown tooling expanded:
+  - toolbar actions for headings, lists, checklist, quote, code block, link
+  - emoji picker with shortcode insertion (`:emoji_name:`)
+  - emoji recents saved in localStorage
+- Removed toolbar arrow move buttons.
+- Added `40vh` bottom reading space in editor and preview.
+- Fixed preview block-edit caret jump (typing no longer jumps to end).
+- Added smooth centering when entering block edit in preview.
 
-### 4) Export/PDF
-- Export now renders markdown content (not the app shell print).
-- Supports file/folder/project consolidated PDF export.
-- Added `github-markdown-css` styling for PDF output.
-- Added Mermaid rendering in export pipeline.
-- Added emoji support (`markdown-it-emoji`).
-- Linked markdown inclusion for file export was added (entry doc order).
-- Export options for filename/path metadata were added.
-- Default export metadata options are now OFF unless enabled from drawer.
-- Link and image behavior improved:
-  - anchors/links rewritten and preserved
-  - local images embedded for export
-  - preview resolves local images through data-url IPC
+### 4) Preview links and checkboxes
+- Internal markdown links open inside the app.
+- External links show confirmation dialog with optional "don't ask again".
+- External-link confirmation preference is persisted in workspace config.
+- Preview task checkboxes are interactive and update markdown source.
+- Checkbox toggle instability fixed with single-pass checkbox index matching.
+- Mermaid preview race condition fixed for rapid navigation/rerender.
 
-### 5) UI and platform polish
-- Removed old "Epica 01" label.
-- Fixed hiddenInset titlebar draggable region on macOS.
-- Disabled selection for toolbar/sidebar/button text while keeping editor text selectable.
-
-### 6) Icons, packaging, and CI
-- Added three SVG icon variants in `public/icons/`.
-- Active/default icon is `public/icons/e-dito-icon-v2-violet.svg`.
-- Icons integrated in favicon, BrowserWindow icon, and mac dock icon (`app.dock.setIcon`).
-- Added `scripts/generate-icons.mjs` for `.icns`, `.ico`, and PNG outputs.
-- Added platform-aware builds:
-  - `scripts/build-final.mjs`
-  - `scripts/build-local.mjs`
-- Added workflow `.github/workflows/build-main.yml`:
-  - builds on `main` push
-  - mac + linux artifacts
-  - build version format `YYYYMMDD`
-  - artifact names `e-dito-{platform}-{buildVersion}.{ext}`
+### 5) i18n implementation
+- Added app-wide i18n with `i18next` + `react-i18next`.
+- Supported languages: `es-MX`, `en-US`.
+- Default language resolves from OS locale; fallback is `en-US`.
+- Language preference persisted as `system | es-MX | en-US`.
+- Menu language switching added under Edit -> Language.
+- Main and renderer language state sync via IPC:
+  - `i18n:get-state`
+  - `i18n:set-preference`
+  - `i18n:changed`
+- Core renderer and main-process UI strings were translated.
 
 ## Recent commit history
-- `62233b1` feat: stabilize desktop markdown workflows and export
-- `d7a2c78` feat: refine block editing interactions
-- `f681615` docs: add architecture notes and export examples
-- `16ae408` chore: ignore local agent metadata artifacts
+- `7859956` feat: enhance preview navigation and editor interactions
+- `3e4eea6` feat: add app-wide i18n with system language defaults
 
 ## Important git note
-- Some commits were created with wrong email: `francisco.lumbreras@kredi.mx`.
-- Correct email should be: `nac13k@gmail.com`.
-- Rewrite may still be pending.
+- One unrelated docs file may remain unstaged:
+  - `docs/export-fixture-project/architecture/integration.md`
+- Do not revert unrelated user changes unless explicitly requested.
 
-## Latest known working state
-- Packaging failure in `build-local` was fixed by:
-  - using semver-compatible versioning for build flow
-  - fixing artifact name template escaping for `${ext}`
-- Updated files:
-  - `scripts/build-local.mjs`
-  - `.github/workflows/build-main.yml`
-  - `package.json` metadata cleanup (description/author + devDependency cleanup)
-- Local verification passed for `npm run build:local` on macOS and generated:
-  - `release/e-dito-mac-20260209.zip`
-  - `release/e-dito-mac-20260209.dmg`
-  - blockmaps
+## Tracking files (keep updated)
+- `docs/session-handoff.md`
+- `docs/session-handoff-short.md`
+- `README.md`
+- `AGENTS.md`
+- `.agents/skills/agentmd-creator/SKILL.md`
+- `.agents/skills/cypress/SKILL.md`
+- `.agents/skills/e2e-testing-patterns/SKILL.md`
+- `.opencode/agents/builder.md`
 
-## Most relevant files to continue
-- `src/main/ipc/registerHandlers.ts`
+## Most relevant source files
 - `src/main/index.ts`
-- `src/main/windows/createMainWindow.ts`
+- `src/main/i18n.ts`
+- `src/main/ipc/registerHandlers.ts`
+- `src/main/menu/createAppMenu.ts`
+- `src/main/workspaceConfig.ts`
 - `src/preload/index.ts`
+- `src/renderer/main.tsx`
+- `src/renderer/i18n/index.ts`
+- `src/renderer/i18n/resources.ts`
+- `src/renderer/shared/types/window.d.ts`
 - `src/renderer/app/App.tsx`
 - `src/renderer/app/AppShell.tsx`
-- `src/renderer/app/globals.css`
-- `src/renderer/features/preview/PreviewPane.tsx`
+- `src/renderer/app/CommandPalette.tsx`
 - `src/renderer/features/editor/EditorPane.tsx`
+- `src/renderer/features/editor/AssetPreviewPane.tsx`
+- `src/renderer/features/preview/PreviewPane.tsx`
 - `src/renderer/features/explorer/ExplorerSidebar.tsx`
 - `src/renderer/features/export/ExportPanel.tsx`
-- `src/renderer/features/workspace/store.ts`
+- `src/renderer/features/git/GitPanel.tsx`
 - `src/renderer/features/workspace/WorkspaceSwitcher.tsx`
-- `src/renderer/shared/types/window.d.ts`
-- `public/icons/*`
-- `scripts/generate-icons.mjs`
-- `scripts/build-final.mjs`
-- `scripts/build-local.mjs`
-- `.github/workflows/build-main.yml`
-- `package.json`
-- `.gitignore`
 
-## Smoke-test checklist
-- `npm run build:main`
-- `npm run build:renderer`
-- `npm run build:local`
+## Build status last verified
+- `npm run build:main` passed
+- `npm run build:renderer` passed
 
 ## Behavior constraints to preserve
-- Keep desktop-native behavior.
-- Keep dark/minimal visual language.
-- Keep hybrid Obsidian/Notion-like block editing model.
-- Keep export fidelity for links/images and project-level docs.
+- Keep desktop-native behavior first.
+- Keep dark/minimal visual language currently in use.
+- Keep hybrid preview/edit workflow and block editing behavior.
+- Keep internal docs links opening in-app.
+- Keep external links behind confirmation (with persisted remember option).
