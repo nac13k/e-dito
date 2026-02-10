@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import MarkdownIt from 'markdown-it'
 import * as markdownItEmoji from 'markdown-it-emoji'
 import { createRequire } from 'node:module'
@@ -7,12 +7,18 @@ import {
   mkdir,
   readFile,
   readdir,
-  rm,
   stat,
   writeFile,
 } from 'node:fs/promises'
 import { basename, dirname, extname, join, normalize, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
+
+import {
+  clearWorkspaceHistory,
+  getValidLastWorkspace,
+  getValidRecentWorkspaces,
+  setLastWorkspacePath,
+} from '../workspaceConfig.js'
 
 type WorkspaceTreeFile = {
   id: string
@@ -52,31 +58,6 @@ const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown', '.mdx', '.txt'])
 const require = createRequire(import.meta.url)
 const githubMarkdownCssPath = require.resolve('github-markdown-css/github-markdown.css')
 const mermaidBundlePath = require.resolve('mermaid/dist/mermaid.min.js')
-const WORKSPACE_CONFIG_PATH = join(app.getPath('userData'), 'workspace.json')
-
-type WorkspaceConfig = {
-  lastWorkspacePath: string | null
-}
-
-const readWorkspaceConfig = async (): Promise<WorkspaceConfig> => {
-  try {
-    const raw = await readFile(WORKSPACE_CONFIG_PATH, 'utf-8')
-    const parsed = JSON.parse(raw) as Partial<WorkspaceConfig>
-    return {
-      lastWorkspacePath:
-        typeof parsed.lastWorkspacePath === 'string' && parsed.lastWorkspacePath.length > 0
-          ? parsed.lastWorkspacePath
-          : null,
-    }
-  } catch {
-    return { lastWorkspacePath: null }
-  }
-}
-
-const writeWorkspaceConfig = async (config: WorkspaceConfig) => {
-  await mkdir(dirname(WORKSPACE_CONFIG_PATH), { recursive: true })
-  await writeFile(WORKSPACE_CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8')
-}
 const emojiPlugin = (
   markdownItEmoji as unknown as {
     full?: (md: MarkdownIt) => void
@@ -644,29 +625,33 @@ const exportMarkdownDocumentsToPdf = async (
   }
 }
 
-export const registerIpcHandlers = () => {
+type RegisterIpcHandlersOptions = {
+  onWorkspaceHistoryChange?: () => void
+}
+
+export const registerIpcHandlers = (options: RegisterIpcHandlersOptions = {}) => {
+  const notifyWorkspaceHistoryChange = () => {
+    options.onWorkspaceHistoryChange?.()
+  }
+
   ipcMain.handle('app:ping', async () => 'pong')
 
   ipcMain.handle('workspace:last:get', async () => {
-    const config = await readWorkspaceConfig()
-    if (!config.lastWorkspacePath) {
-      return null
-    }
-
-    try {
-      const info = await stat(config.lastWorkspacePath)
-      if (!info.isDirectory()) {
-        return null
-      }
-      return config.lastWorkspacePath
-    } catch {
-      return null
-    }
+    return getValidLastWorkspace()
   })
 
   ipcMain.handle('workspace:last:set', async (_event, workspacePath: string | null) => {
-    const nextPath = workspacePath && workspacePath.trim().length > 0 ? workspacePath : null
-    await writeWorkspaceConfig({ lastWorkspacePath: nextPath })
+    await setLastWorkspacePath(workspacePath)
+    notifyWorkspaceHistoryChange()
+  })
+
+  ipcMain.handle('workspace:recent:list', async () => {
+    return getValidRecentWorkspaces()
+  })
+
+  ipcMain.handle('workspace:recent:clear', async () => {
+    await clearWorkspaceHistory()
+    notifyWorkspaceHistoryChange()
   })
 
   ipcMain.handle('workspace:select', async (event) => {
@@ -687,7 +672,8 @@ export const registerIpcHandlers = () => {
 
     const selectedPath = result.filePaths[0] ?? null
     if (selectedPath) {
-      await writeWorkspaceConfig({ lastWorkspacePath: selectedPath })
+      await setLastWorkspacePath(selectedPath)
+      notifyWorkspaceHistoryChange()
     }
 
     return selectedPath
@@ -741,7 +727,7 @@ export const registerIpcHandlers = () => {
 
   ipcMain.handle('workspace:file:delete', async (_event, payload: { workspacePath: string; filePath: string }) => {
     ensureInsideWorkspace(payload.workspacePath, payload.filePath)
-    await rm(payload.filePath)
+    await shell.trashItem(payload.filePath)
   })
 
   ipcMain.handle(

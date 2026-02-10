@@ -6,6 +6,10 @@ declare global {
       ping: () => Promise<string>
       getLastWorkspace: () => Promise<string | null>
       setLastWorkspace: (workspacePath: string | null) => Promise<void>
+      getRecentWorkspaces: () => Promise<string[]>
+      clearRecentWorkspaces: () => Promise<void>
+      onWorkspaceOpenRequest: (callback: (workspacePath: string | null) => void) => () => void
+      onMenuEditAction: (callback: (action: 'undo' | 'redo') => void) => () => void
       selectWorkspace: () => Promise<string | null>
       readWorkspaceTree: (workspacePath: string) => Promise<{
         id: string

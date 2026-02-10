@@ -1,0 +1,26 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="80" y1="72" x2="432" y2="448" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#200E12"/>
+      <stop offset="1" stop-color="#12080A"/>
+    </linearGradient>
+    <linearGradient id="crimson" x1="156" y1="152" x2="360" y2="360" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F43F5E"/>
+      <stop offset="1" stop-color="#BE123C"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="36" y="36" width="440" height="440" rx="104" fill="url(#bg)"/>
+  <rect x="36" y="36" width="440" height="440" rx="104" stroke="#4B1D28" stroke-width="2"/>
+
+  <path d="M150 128H334L370 164V384H150V128Z" fill="#1A0E12" stroke="#5C2633" stroke-width="3"/>
+  <path d="M334 128V164H370" stroke="#7A3142" stroke-width="3"/>
+
+  <rect x="176" y="182" width="168" height="8" rx="4" fill="#6B2D3C"/>
+  <rect x="176" y="210" width="132" height="8" rx="4" fill="#6B2D3C"/>
+  <rect x="176" y="238" width="148" height="8" rx="4" fill="#6B2D3C"/>
+
+  <path d="M184 300H320" stroke="url(#crimson)" stroke-width="12" stroke-linecap="round"/>
+  <path d="M184 334H300" stroke="#F43F5E" stroke-opacity="0.42" stroke-width="10" stroke-linecap="round"/>
+  <path d="M316 316V350" stroke="#F43F5E" stroke-width="11" stroke-linecap="round"/>
+</svg>

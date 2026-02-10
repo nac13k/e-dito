@@ -1,4 +1,3 @@
-import { Sparkles } from 'lucide-react'
 import MarkdownIt from 'markdown-it'
 import * as markdownItEmoji from 'markdown-it-emoji'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -146,10 +145,14 @@ const App = () => {
   const [mermaidTheme, setMermaidTheme] = useState<'neutral' | 'dark'>('dark')
   const selectWorkspace = useWorkspaceStore((state) => state.selectWorkspace)
   const loadLastWorkspace = useWorkspaceStore((state) => state.loadLastWorkspace)
+  const setWorkspacePath = useWorkspaceStore((state) => state.setPath)
   const workspacePath = useWorkspaceStore((state) => state.path)
   const [clipboard, setClipboard] = useState<{ name: string; path: string } | null>(null)
   const saveTimeoutRef = useRef<number | null>(null)
   const markdownRef = useRef(markdown)
+  const previewUndoStackRef = useRef<string[]>([])
+  const previewRedoStackRef = useRef<string[]>([])
+  const applyingPreviewHistoryRef = useRef(false)
 
   const getEditorScroller = () => editorRef.current?.querySelector('.cm-scroller') as HTMLDivElement | null
 
@@ -210,7 +213,59 @@ const App = () => {
     })
   }
 
-  const updateMarkdown = (nextValue: string, flush = false) => {
+  const resetPreviewHistory = () => {
+    previewUndoStackRef.current = []
+    previewRedoStackRef.current = []
+  }
+
+  const applyPreviewHistory = (action: 'undo' | 'redo') => {
+    const canEdit = workspacePath && activeFileId && fileKinds[activeFileId] === 'markdown'
+    if (!canEdit) {
+      return
+    }
+
+    if (action === 'undo') {
+      const next = previewUndoStackRef.current.pop()
+      if (typeof next !== 'string') {
+        return
+      }
+      previewRedoStackRef.current.push(markdownRef.current)
+      applyingPreviewHistoryRef.current = true
+      updateMarkdown(next, true, { source: 'history' })
+      applyingPreviewHistoryRef.current = false
+      return
+    }
+
+    const next = previewRedoStackRef.current.pop()
+    if (typeof next !== 'string') {
+      return
+    }
+    previewUndoStackRef.current.push(markdownRef.current)
+    applyingPreviewHistoryRef.current = true
+    updateMarkdown(next, true, { source: 'history' })
+    applyingPreviewHistoryRef.current = false
+  }
+
+  const updateMarkdown = (
+    nextValue: string,
+    flush = false,
+    options: { source?: 'editor' | 'preview' | 'history' } = {}
+  ) => {
+    const currentValue = markdownRef.current
+    const source = options.source ?? 'editor'
+
+    if (
+      source === 'preview'
+      && !applyingPreviewHistoryRef.current
+      && nextValue !== currentValue
+    ) {
+      previewUndoStackRef.current.push(currentValue)
+      if (previewUndoStackRef.current.length > 200) {
+        previewUndoStackRef.current.shift()
+      }
+      previewRedoStackRef.current = []
+    }
+
     setMarkdown(nextValue)
     markdownRef.current = nextValue
 
@@ -716,6 +771,39 @@ const App = () => {
   }, [loadLastWorkspace])
 
   useEffect(() => {
+    if (!window.api.onWorkspaceOpenRequest) {
+      return
+    }
+
+    const unsubscribe = window.api.onWorkspaceOpenRequest((nextPath) => {
+      setWorkspacePath(nextPath)
+    })
+
+    return unsubscribe
+  }, [setWorkspacePath])
+
+  useEffect(() => {
+    if (!window.api.onMenuEditAction) {
+      return
+    }
+
+    const unsubscribe = window.api.onMenuEditAction((action) => {
+      if (viewMode === 'editor' && !activeAssetPreview) {
+        window.dispatchEvent(new CustomEvent('menu:edit-action', { detail: action }))
+        return
+      }
+
+      applyPreviewHistory(action)
+    })
+
+    return unsubscribe
+  }, [activeAssetPreview, viewMode, workspacePath, activeFileId, fileKinds])
+
+  useEffect(() => {
+    resetPreviewHistory()
+  }, [workspacePath, activeFileId])
+
+  useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && commandOpen) {
         event.preventDefault()
@@ -734,6 +822,17 @@ const App = () => {
 
   useEffect(() => {
     if (!workspacePath) {
+      resetPreviewHistory()
+      setFolders([])
+      setFilePaths({})
+      setFileKinds({})
+      setFolderPaths({})
+      setDocCount(0)
+      setActiveFileId(null)
+      setMarkdown('')
+      setPreviewMarkdown('')
+      setActiveAssetPreview(null)
+      setActiveEditBlockIndex(null)
       return
     }
 
@@ -918,10 +1017,6 @@ const App = () => {
               </span>
             </div>
             <WorkspaceSwitcher />
-            <Button size="sm" data-testid="new-doc" onClick={() => createDoc()}>
-              <Sparkles size={14} />
-              Nuevo documento
-            </Button>
           </div>
         </>
       }
@@ -1008,7 +1103,17 @@ const App = () => {
           />
       }
       main={
-        viewMode === 'editor' ? (
+        !workspacePath ? (
+          <section className="flex h-full items-center justify-center border-l border-canvas-200" style={{ background: 'var(--editor-bg)' }}>
+            <div className="max-w-md space-y-3 px-6 text-center">
+              <h2 className="text-lg font-semibold text-ink-900">Sin workspace abierto</h2>
+              <p className="text-sm text-ink-600">Abre una carpeta para empezar a editar y previsualizar documentos.</p>
+              <Button size="sm" onClick={() => void selectWorkspace()}>
+                Abrir workspace
+              </Button>
+            </div>
+          </section>
+        ) : viewMode === 'editor' ? (
           activeAssetPreview ? (
             <AssetPreviewPane
               fileName={activeAssetPreview.name}
@@ -1046,7 +1151,7 @@ const App = () => {
                 : [...markdownBlocks]
               baseBlocks[index] = nextValue
               setEditBlockDraft(nextValue)
-              updateMarkdown(baseBlocks.join('\n\n'))
+      updateMarkdown(baseBlocks.join('\n\n'), false, { source: 'preview' })
             }}
             onBlurBlock={() => {
               const baseBlocks = activeEditBlockIndex !== null && editSnapshotBlocks
@@ -1064,7 +1169,7 @@ const App = () => {
                 return block.trim().length > 0
               })
               const nextValue = compactBlocks.join('\n\n')
-              updateMarkdown(nextValue, true)
+              updateMarkdown(nextValue, true, { source: 'preview' })
               setEditSnapshotBlocks(null)
               setEditSnapshotPreviewBlocks(null)
               setEditBlockDraft('')
@@ -1085,7 +1190,7 @@ const App = () => {
               setActiveEditBlockIndex(index + 1)
               setEditCaretPlacement('start')
               setEditCaretNonce((current) => current + 1)
-              updateMarkdown(baseBlocks.join('\n\n'), true)
+              updateMarkdown(baseBlocks.join('\n\n'), true, { source: 'preview' })
             }}
             onMergeBlockWithPrevious={(index) => {
               if (index <= 0) {
@@ -1114,7 +1219,7 @@ const App = () => {
               setActiveEditBlockIndex(index - 1)
               setEditCaretPlacement('end')
               setEditCaretNonce((current) => current + 1)
-              updateMarkdown(baseBlocks.join('\n\n'), true)
+              updateMarkdown(baseBlocks.join('\n\n'), true, { source: 'preview' })
             }}
             onNavigateBlock={(index, direction) => {
               const baseBlocks = activeEditBlockIndex !== null && editSnapshotBlocks
@@ -1136,7 +1241,7 @@ const App = () => {
               setEditBlockDraft(baseBlocks[nextIndex] ?? '')
               setEditCaretPlacement(direction === 'down' ? 'start' : 'end')
               setEditCaretNonce((current) => current + 1)
-              updateMarkdown(baseBlocks.join('\n\n'))
+              updateMarkdown(baseBlocks.join('\n\n'), false, { source: 'preview' })
             }}
             editCaretPlacement={editCaretPlacement}
             editCaretNonce={editCaretNonce}

@@ -99,6 +99,7 @@ export const ExplorerSidebar = ({
 
   const openMenu = (event: MouseEvent, target: string | null) => {
     event.preventDefault()
+    event.stopPropagation()
     setMenu({ open: true, x: event.clientX, y: event.clientY, target })
   }
 
@@ -200,22 +201,29 @@ export const ExplorerSidebar = ({
     return { Icon: FileType2, colorClass: 'text-slate-500' }
   }
 
+  const toAbsolutePath = (relativePath: string) => {
+    if (!workspacePath) {
+      return relativePath
+    }
+
+    if (relativePath === '.' || relativePath.length === 0) {
+      return workspacePath
+    }
+
+    if (workspacePath.includes('\\')) {
+      return `${workspacePath}\\${relativePath.split('/').join('\\')}`
+    }
+
+    return `${workspacePath}/${relativePath}`
+  }
+
   return (
     <section
       className="flex h-full min-h-0 flex-col gap-3 overflow-hidden border-r border-canvas-200 p-4"
       style={{ background: 'var(--sidebar)' }}
-      onContextMenu={(event) => openMenu(event, activeFileId)}
+      onContextMenu={(event) => openMenu(event, null)}
     >
-      <header className="flex items-center justify-between">
-        <div>
-          <p className="text-xs uppercase tracking-[0.24em] text-ink-400">
-            Explorer
-          </p>
-          <h2 className="text-lg font-semibold text-ink-900">Proyecto</h2>
-          <p className="mt-1 truncate text-xs text-ink-500" data-testid="workspace-root">
-            {workspacePath ?? 'Sin workspace'}
-          </p>
-        </div>
+      <header className="flex justify-end">
         <button
           className="rounded-full bg-canvas-100 p-2 text-ink-600"
           type="button"
@@ -236,48 +244,62 @@ export const ExplorerSidebar = ({
         />
       ) : null}
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 text-sm">
-        {visibleFolders.map((folder) => (
-          <div key={folder.id} className="space-y-2">
-            <button
-              className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-ink-800 hover:bg-canvas-100"
+        {visibleFolders.map((folder) => {
+          const folderIndent = Math.max(8, folder.depth * 14)
+          const fileIndent = folderIndent + 24
+
+          return (
+            <div key={folder.id} className="space-y-2">
+              <button
+                className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-ink-800 hover:bg-canvas-100"
               type="button"
               onClick={() => toggleFolder(folder.id)}
               data-testid={`folder-toggle-${folder.id}`}
-              style={{ paddingLeft: `${Math.max(4, folder.depth * 10)}px` }}
+              title={toAbsolutePath(folder.id)}
+              style={{ paddingLeft: `${folderIndent}px` }}
             >
-              {collapsedFolders[folder.id] ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-              <Folder size={16} />
-              {folder.name}/
-            </button>
-            {!collapsedFolders[folder.id] ? (
-              <div className="space-y-1 pl-4" data-testid={`folder-files-${folder.id}`}>
-                {folder.files.map((file) => {
-                  const { Icon, colorClass } = getFileVisual(file)
-                  return (
-                    <button
-                      key={file.id}
-                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-ink-700 hover:bg-canvas-100 ${
-                        activeFileId === file.id ? 'bg-canvas-100 text-ink-900' : ''
-                      }`}
-                      onClick={() => onSelectFile(file.id)}
-                      onContextMenu={(event) => openMenu(event, file.id)}
-                      type="button"
-                      data-testid={`file-${file.id}`}
-                    >
-                      <Icon size={14} className={colorClass} />
-                      {file.name}
-                      {file.kind === 'asset' ? (
-                        <span className="ml-auto rounded bg-canvas-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-ink-500">
-                          asset
-                        </span>
-                      ) : null}
-                    </button>
-                  )
-                })}
-              </div>
-            ) : null}
-          </div>
-        ))}
+                {collapsedFolders[folder.id] ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                <Folder size={16} />
+                {folder.name}/
+              </button>
+              {!collapsedFolders[folder.id] ? (
+                <div
+                  className="space-y-1 border-l border-canvas-200/70"
+                  data-testid={`folder-files-${folder.id}`}
+                  style={{
+                    marginLeft: `${folderIndent + 10}px`,
+                    paddingLeft: `${Math.max(10, fileIndent - folderIndent - 10)}px`,
+                  }}
+                >
+                  {folder.files.map((file) => {
+                    const { Icon, colorClass } = getFileVisual(file)
+                    return (
+                      <button
+                        key={file.id}
+                        className={`flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-ink-700 hover:bg-canvas-100 ${
+                          activeFileId === file.id ? 'bg-canvas-100 text-ink-900' : ''
+                        }`}
+                        onClick={() => onSelectFile(file.id)}
+                        onContextMenu={(event) => openMenu(event, file.id)}
+                        type="button"
+                        data-testid={`file-${file.id}`}
+                        title={toAbsolutePath(file.id)}
+                      >
+                        <Icon size={14} className={colorClass} />
+                        {file.name}
+                        {file.kind === 'asset' ? (
+                          <span className="ml-auto rounded bg-canvas-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-ink-500">
+                            asset
+                          </span>
+                        ) : null}
+                      </button>
+                    )
+                  })}
+                </div>
+              ) : null}
+            </div>
+          )
+        })}
       </div>
       {menu.open ? (
         <div className="fixed inset-0 z-50">

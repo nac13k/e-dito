@@ -1,5 +1,13 @@
 import CodeMirror from '@uiw/react-codemirror'
+import {
+  autocompletion,
+  completeFromList,
+  startCompletion,
+  type Completion,
+} from '@codemirror/autocomplete'
+import { redo, undo } from '@codemirror/commands'
 import { markdown } from '@codemirror/lang-markdown'
+import { languages } from '@codemirror/language-data'
 import { oneDark } from '@codemirror/theme-one-dark'
 import { ChevronDown, ChevronUp, Copy, Heading2, List, Trash2 } from 'lucide-react'
 import { EditorView, type ViewUpdate } from '@codemirror/view'
@@ -22,6 +30,45 @@ export const EditorPane = ({
   jumpRequest,
   onJumpHandled,
 }: EditorPaneProps) => {
+  const markdownCompletions: Completion[] = useMemo(
+    () => [
+      { label: '# ', detail: 'Heading 1', type: 'keyword' },
+      { label: '## ', detail: 'Heading 2', type: 'keyword' },
+      { label: '### ', detail: 'Heading 3', type: 'keyword' },
+      { label: '- ', detail: 'Bullet list', type: 'keyword' },
+      { label: '1. ', detail: 'Numbered list', type: 'keyword' },
+      { label: '- [ ] ', detail: 'Checklist item', type: 'keyword' },
+      { label: '> ', detail: 'Blockquote', type: 'keyword' },
+      { label: '**texto**', detail: 'Bold', type: 'keyword' },
+      { label: '*texto*', detail: 'Italic', type: 'keyword' },
+      { label: '`codigo`', detail: 'Inline code', type: 'keyword' },
+      {
+        label: '```ts\n\n```',
+        detail: 'TS code block',
+        type: 'keyword',
+        apply: '```ts\n\n```',
+      },
+      {
+        label: '```mermaid\n\n```',
+        detail: 'Mermaid block',
+        type: 'keyword',
+        apply: '```mermaid\n\n```',
+      },
+      { label: '![alt](ruta)', detail: 'Image', type: 'keyword' },
+      { label: '[texto](url)', detail: 'Link', type: 'keyword' },
+    ],
+    []
+  )
+
+  const readingScrollExtension = useMemo(
+    () => EditorView.theme({
+      '.cm-content': {
+        paddingBottom: '40vh',
+      },
+    }),
+    []
+  )
+
   const viewRef = useRef<EditorView | null>(null)
   const [draggingBlockIndex, setDraggingBlockIndex] = useState<number | null>(null)
   const [cursorPos, setCursorPos] = useState(0)
@@ -283,6 +330,30 @@ export const EditorPane = ({
   ]
 
   useEffect(() => {
+    const handleMenuEditAction = (event: Event) => {
+      const custom = event as CustomEvent<'undo' | 'redo'>
+      const view = viewRef.current
+      if (!view) {
+        return
+      }
+
+      if (custom.detail === 'undo') {
+        undo(view)
+        return
+      }
+
+      if (custom.detail === 'redo') {
+        redo(view)
+      }
+    }
+
+    window.addEventListener('menu:edit-action', handleMenuEditAction)
+    return () => {
+      window.removeEventListener('menu:edit-action', handleMenuEditAction)
+    }
+  }, [])
+
+  useEffect(() => {
     if (!jumpRequest || !viewRef.current) {
       return
     }
@@ -363,7 +434,12 @@ export const EditorPane = ({
           height="100%"
           theme={oneDark}
           extensions={[
-            markdown(),
+            markdown({ codeLanguages: languages }),
+            autocompletion({
+              activateOnTyping: true,
+              override: [completeFromList(markdownCompletions)],
+            }),
+            readingScrollExtension,
             EditorView.lineWrapping,
             EditorView.domEventHandlers({
               scroll: (_event, view) => {
@@ -438,6 +514,15 @@ export const EditorPane = ({
                     setSlashOpen(true)
                     return true
                   }
+                }
+
+                if ((event.metaKey || event.ctrlKey) && event.key === ' ') {
+                  event.preventDefault()
+                  const view = viewRef.current
+                  if (view) {
+                    startCompletion(view)
+                  }
+                  return true
                 }
 
                 return false

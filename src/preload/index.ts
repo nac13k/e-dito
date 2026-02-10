@@ -32,6 +32,28 @@ const api = {
   getLastWorkspace: () => ipcRenderer.invoke('workspace:last:get') as Promise<string | null>,
   setLastWorkspace: (workspacePath: string | null) =>
     ipcRenderer.invoke('workspace:last:set', workspacePath) as Promise<void>,
+  getRecentWorkspaces: () =>
+    ipcRenderer.invoke('workspace:recent:list') as Promise<string[]>,
+  clearRecentWorkspaces: () =>
+    ipcRenderer.invoke('workspace:recent:clear') as Promise<void>,
+  onWorkspaceOpenRequest: (callback: (workspacePath: string | null) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, workspacePath: string | null) => {
+      callback(workspacePath)
+    }
+    ipcRenderer.on('workspace:open-request', handler)
+    return () => {
+      ipcRenderer.removeListener('workspace:open-request', handler)
+    }
+  },
+  onMenuEditAction: (callback: (action: 'undo' | 'redo') => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, action: 'undo' | 'redo') => {
+      callback(action)
+    }
+    ipcRenderer.on('menu:edit-action', handler)
+    return () => {
+      ipcRenderer.removeListener('menu:edit-action', handler)
+    }
+  },
   selectWorkspace: () =>
     ipcRenderer.invoke('workspace:select') as Promise<string | null>,
   readWorkspaceTree: (workspacePath: string) =>

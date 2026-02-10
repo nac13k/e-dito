@@ -174,6 +174,7 @@ export const PreviewPane = ({
             )}
           </article>
         ))}
+        <div aria-hidden className="h-[40vh]" />
       </div>
     </section>
   )

@@ -5,6 +5,14 @@ import { fileURLToPath } from 'node:url'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL)
 
+export const getAppIconPath = () => {
+  if (isDev) {
+    return path.join(process.cwd(), 'public/icons/e-dito-icon-v2-violet.svg')
+  }
+
+  return path.join(__dirname, '../../renderer/icons/e-dito-icon-v2-violet.svg')
+}
+
 const getPreloadPath = () => {
   if (isDev) {
     return path.join(process.cwd(), 'dist/preload/index.js')
@@ -21,6 +29,7 @@ export const createMainWindow = () => {
     minHeight: 640,
     backgroundColor: '#f7f3ef',
     title: 'E-Dito',
+    icon: getAppIconPath(),
     titleBarStyle: 'hiddenInset',
     webPreferences: {
       preload: getPreloadPath(),
