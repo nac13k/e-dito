@@ -1,6 +1,8 @@
 import { app, BrowserWindow, dialog, Menu, shell } from 'electron'
 
 import { clearWorkspaceHistory, getValidRecentWorkspaces } from '../workspaceConfig.js'
+import { getMainI18n } from '../i18n.js'
+import type { SupportedUiLanguage, UiLanguagePreference } from '../workspaceConfig.js'
 
 const getTargetWindow = () => BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0] ?? null
 
@@ -14,15 +16,15 @@ const sendMenuEditAction = (action: 'undo' | 'redo') => {
   targetWindow?.webContents.send('menu:edit-action', action)
 }
 
-const handleOpenWorkspace = async () => {
+const handleOpenWorkspace = async (openTitle: string) => {
   const targetWindow = getTargetWindow()
   const result = targetWindow
     ? await dialog.showOpenDialog(targetWindow, {
-        title: 'Abrir workspace',
+        title: openTitle,
         properties: ['openDirectory', 'createDirectory'],
       })
     : await dialog.showOpenDialog({
-        title: 'Abrir workspace',
+        title: openTitle,
         properties: ['openDirectory', 'createDirectory'],
       })
 
@@ -31,7 +33,9 @@ const handleOpenWorkspace = async () => {
   }
 }
 
-const buildRecentWorkspaceSubmenu = async (): Promise<Electron.MenuItemConstructorOptions[]> => {
+const buildRecentWorkspaceSubmenu = async (
+  labels: { clearRecent: string; noRecent: string }
+): Promise<Electron.MenuItemConstructorOptions[]> => {
   const recentWorkspaces = await getValidRecentWorkspaces()
   const recentItems = recentWorkspaces.map((workspacePath) => ({
     label: workspacePath,
@@ -39,7 +43,7 @@ const buildRecentWorkspaceSubmenu = async (): Promise<Electron.MenuItemConstruct
   }))
 
   const clearHistoryItem = {
-    label: 'Clear Recent Workspaces',
+    label: labels.clearRecent,
     click: () => {
       void clearWorkspaceHistory().then(() => {
         sendWorkspaceOpenRequest(null)
@@ -49,7 +53,7 @@ const buildRecentWorkspaceSubmenu = async (): Promise<Electron.MenuItemConstruct
 
   if (recentItems.length === 0) {
     return [
-      { label: 'No Recent Workspaces', enabled: false },
+      { label: labels.noRecent, enabled: false },
       { type: 'separator' as const },
       clearHistoryItem,
     ]
@@ -62,8 +66,18 @@ const buildRecentWorkspaceSubmenu = async (): Promise<Electron.MenuItemConstruct
   ]
 }
 
-export const buildApplicationMenu = async () => {
-  const recentSubmenu = await buildRecentWorkspaceSubmenu()
+type BuildApplicationMenuOptions = {
+  language: SupportedUiLanguage
+  languagePreference: UiLanguagePreference
+  onLanguagePreferenceChange: (preference: UiLanguagePreference) => void
+}
+
+export const buildApplicationMenu = async (options: BuildApplicationMenuOptions) => {
+  const labels = getMainI18n(options.language)
+  const recentSubmenu = await buildRecentWorkspaceSubmenu({
+    clearRecent: labels.menu.clearRecentWorkspaces,
+    noRecent: labels.menu.noRecentWorkspaces,
+  })
   const isMac = process.platform === 'darwin'
 
   const template: Electron.MenuItemConstructorOptions[] = []
@@ -87,14 +101,14 @@ export const buildApplicationMenu = async () => {
 
   const fileSubmenu: Electron.MenuItemConstructorOptions[] = [
     {
-      label: 'Open Workspace...',
+      label: labels.menu.openWorkspace,
       accelerator: 'CmdOrCtrl+O',
       click: () => {
-        void handleOpenWorkspace()
+        void handleOpenWorkspace(labels.dialogs.openWorkspaceTitle)
       },
     },
     {
-      label: 'Open Recent Workspace',
+      label: labels.menu.openRecentWorkspace,
       submenu: recentSubmenu,
     },
     { type: 'separator' },
@@ -103,39 +117,63 @@ export const buildApplicationMenu = async () => {
 
   template.push(
     {
-      label: 'File',
+      label: labels.menu.file,
       submenu: fileSubmenu,
     },
     {
-      label: 'Edit',
+      label: labels.menu.edit,
       submenu: [
         {
-          label: 'Undo',
+          label: labels.menu.undo,
           accelerator: 'CmdOrCtrl+Z',
           click: () => sendMenuEditAction('undo'),
         },
         {
-          label: 'Redo',
+          label: labels.menu.redo,
           accelerator: 'CmdOrCtrl+Shift+Z',
           click: () => sendMenuEditAction('redo'),
         },
         { type: 'separator' },
         { role: 'cut', accelerator: 'CmdOrCtrl+X' },
         { role: 'copy', accelerator: 'CmdOrCtrl+C' },
-        { label: 'Paste (Keep Format)', role: 'paste', accelerator: 'CmdOrCtrl+V' },
-        { label: 'Paste as Plain Text', role: 'pasteAndMatchStyle', accelerator: 'CmdOrCtrl+Shift+V' },
+        { label: labels.menu.pasteKeepFormat, role: 'paste', accelerator: 'CmdOrCtrl+V' },
+        { label: labels.menu.pastePlainText, role: 'pasteAndMatchStyle', accelerator: 'CmdOrCtrl+Shift+V' },
         { role: 'selectAll', accelerator: 'CmdOrCtrl+A' },
+        { type: 'separator' },
+        {
+          label: labels.menu.language,
+          submenu: [
+            {
+              label: labels.menu.languageSystem,
+              type: 'radio',
+              checked: options.languagePreference === 'system',
+              click: () => options.onLanguagePreferenceChange('system'),
+            },
+            {
+              label: 'Espanol (Mexico)',
+              type: 'radio',
+              checked: options.languagePreference === 'es-MX',
+              click: () => options.onLanguagePreferenceChange('es-MX'),
+            },
+            {
+              label: 'English (United States)',
+              type: 'radio',
+              checked: options.languagePreference === 'en-US',
+              click: () => options.onLanguagePreferenceChange('en-US'),
+            },
+          ],
+        },
       ],
     },
     {
-      label: 'Window',
+      label: labels.menu.window,
       submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'togglefullscreen' }],
     },
     {
-      label: 'Help',
+      label: labels.menu.help,
       submenu: [
         {
-          label: 'E-Dito Docs',
+          label: labels.menu.docs,
           click: () => {
             void shell.openExternal('https://github.com')
           },
@@ -146,7 +184,7 @@ export const buildApplicationMenu = async () => {
 
   if (!isMac) {
     template.push({
-      label: 'App',
+      label: labels.menu.app,
       submenu: [{ role: 'about' }, { role: 'quit' }],
     })
   }

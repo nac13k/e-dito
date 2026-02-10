@@ -4,6 +4,11 @@ declare global {
   interface Window {
     api: {
       ping: () => Promise<string>
+      getI18nState: () => Promise<{ language: 'es-MX' | 'en-US'; preference: 'system' | 'es-MX' | 'en-US' }>
+      setI18nPreference: (preference: 'system' | 'es-MX' | 'en-US') => Promise<void>
+      onI18nChanged: (
+        callback: (state: { language: 'es-MX' | 'en-US'; preference: 'system' | 'es-MX' | 'en-US' }) => void
+      ) => () => void
       getLastWorkspace: () => Promise<string | null>
       setLastWorkspace: (workspacePath: string | null) => Promise<void>
       getRecentWorkspaces: () => Promise<string[]>

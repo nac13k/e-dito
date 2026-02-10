@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 type Action = {
   id: string
@@ -16,16 +17,20 @@ type CommandPaletteProps = {
 }
 
 export const CommandPalette = ({ open, actions, onClose }: CommandPaletteProps) => {
+  const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const [activeCategory, setActiveCategory] = useState('Todas')
+  const [activeCategory, setActiveCategory] = useState(t('commandPalette.all'))
+
+  const allCategory = t('commandPalette.all')
 
   useEffect(() => {
     if (!open) {
       setQuery('')
       setSelectedIndex(0)
+      setActiveCategory(allCategory)
     }
-  }, [open])
+  }, [allCategory, open])
 
   useEffect(() => {
     setSelectedIndex(0)
@@ -33,21 +38,21 @@ export const CommandPalette = ({ open, actions, onClose }: CommandPaletteProps) 
 
   const categories = useMemo(() => {
     const unique = new Set(actions.map((action) => action.category).filter(Boolean))
-    return ['Todas', ...Array.from(unique) as string[]]
-  }, [actions])
+    return [allCategory, ...Array.from(unique) as string[]]
+  }, [actions, allCategory])
 
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase()
     return actions.filter((action) => {
       const inCategory =
-        activeCategory === 'Todas' || action.category === activeCategory
+        activeCategory === allCategory || action.category === activeCategory
       const haystack = [action.label, ...(action.aliases ?? [])]
         .join(' ')
         .toLowerCase()
       const matchesQuery = normalized ? haystack.includes(normalized) : true
       return inCategory && matchesQuery
     })
-  }, [actions, activeCategory, query])
+  }, [actions, activeCategory, allCategory, query])
 
   useEffect(() => {
     if (!open) {
@@ -87,13 +92,13 @@ export const CommandPalette = ({ open, actions, onClose }: CommandPaletteProps) 
         className="absolute inset-0 bg-ink-900/20"
         onClick={onClose}
         type="button"
-        aria-label="Cerrar comandos"
+        aria-label={t('commandPalette.closeCommands')}
       />
       <div className="absolute left-1/2 top-24 w-full max-w-xl -translate-x-1/2 rounded-2xl border border-canvas-200 bg-white shadow-soft">
         <div className="border-b border-canvas-200 px-4 py-3">
           <input
             className="w-full border-0 bg-transparent text-sm text-ink-800 focus:outline-none"
-            placeholder="Buscar comando..."
+            placeholder={t('commandPalette.searchPlaceholder')}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             autoFocus
@@ -146,12 +151,12 @@ export const CommandPalette = ({ open, actions, onClose }: CommandPaletteProps) 
           ))}
           {filtered.length === 0 ? (
             <div className="px-3 py-6 text-center text-xs text-ink-400">
-              Sin resultados
+              {t('commandPalette.noResults')}
             </div>
           ) : null}
         </div>
         <div className="border-t border-canvas-200 px-4 py-3 text-xs text-ink-400">
-          Sugerencias: "export pdf", "abrir carpeta", "preview", "sync git"
+          {t('commandPalette.suggestions')}
         </div>
       </div>
     </div>

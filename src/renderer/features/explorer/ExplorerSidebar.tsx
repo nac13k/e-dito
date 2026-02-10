@@ -18,6 +18,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { useTranslation } from 'react-i18next'
 
 export type ExplorerFile = {
   id: string
@@ -58,6 +59,7 @@ export const ExplorerSidebar = ({
   onPasteFile,
   onRevealInFinder,
 }: ExplorerSidebarProps) => {
+  const { t } = useTranslation()
   const [query, setQuery] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [menu, setMenu] = useState<{ open: boolean; x: number; y: number; target: string | null }>(
@@ -227,7 +229,7 @@ export const ExplorerSidebar = ({
         <button
           className="rounded-full bg-canvas-100 p-2 text-ink-600"
           type="button"
-          aria-label="Buscar en el explorador"
+          aria-label={t('explorer.searchAria')}
           onClick={() => setSearchOpen((current) => !current)}
         >
           <Search size={16} />
@@ -238,7 +240,7 @@ export const ExplorerSidebar = ({
           ref={searchRef}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Buscar archivos..."
+          placeholder={t('explorer.searchPlaceholder')}
           className="w-full rounded-xl border border-canvas-200 bg-white px-3 py-2 text-xs text-ink-700 shadow-soft focus:outline-none"
           type="text"
         />
@@ -289,7 +291,7 @@ export const ExplorerSidebar = ({
                         {file.name}
                         {file.kind === 'asset' ? (
                           <span className="ml-auto rounded bg-canvas-100 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-ink-500">
-                            asset
+                            {t('explorer.assetTag')}
                           </span>
                         ) : null}
                       </button>
@@ -306,7 +308,7 @@ export const ExplorerSidebar = ({
           <button
             className="absolute inset-0"
             type="button"
-            aria-label="Cerrar menu"
+            aria-label={t('explorer.closeMenu')}
             onClick={() => setMenu((current) => ({ ...current, open: false }))}
           />
           <div
@@ -320,7 +322,7 @@ export const ExplorerSidebar = ({
               onClick={handleCreateDoc}
             >
               <FileText size={14} />
-              Nuevo documento
+              {t('explorer.newDocument')}
             </button>
             <button
               className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-canvas-100"
@@ -328,7 +330,7 @@ export const ExplorerSidebar = ({
               onClick={handleReveal}
             >
               <FolderOpen size={14} />
-              Reveal in Finder
+              {t('explorer.revealInFinder')}
             </button>
             <button
               className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-canvas-100"
@@ -336,7 +338,7 @@ export const ExplorerSidebar = ({
               onClick={handleCreateFolder}
             >
               <FolderPlus size={14} />
-              Crear carpeta
+              {t('explorer.createFolder')}
             </button>
             <button
               className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-canvas-100"
@@ -345,7 +347,7 @@ export const ExplorerSidebar = ({
               disabled={!menu.target}
             >
               <Trash2 size={14} />
-              Eliminar
+              {t('explorer.delete')}
             </button>
             <button
               className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-canvas-100"
@@ -354,7 +356,7 @@ export const ExplorerSidebar = ({
               disabled={!menu.target}
             >
               <Copy size={14} />
-              Copiar
+              {t('explorer.copy')}
             </button>
             <button
               className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-canvas-100"
@@ -362,7 +364,7 @@ export const ExplorerSidebar = ({
               onClick={handlePaste}
             >
               <ClipboardPaste size={14} />
-              Pegar
+              {t('explorer.paste')}
             </button>
             <button
               className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left hover:bg-canvas-100"
@@ -370,7 +372,7 @@ export const ExplorerSidebar = ({
               onClick={handleSearch}
             >
               <Search size={14} />
-              Buscar
+              {t('explorer.search')}
             </button>
           </div>
         </div>

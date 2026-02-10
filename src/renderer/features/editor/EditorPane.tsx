@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { EditorView, type ViewUpdate } from '@codemirror/view'
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react'
+import { useTranslation } from 'react-i18next'
 
 const EMOJI_RECENTS_STORAGE_KEY = 'editor:emoji-recents'
 const MAX_RECENT_EMOJIS = 10
@@ -47,6 +48,7 @@ export const EditorPane = ({
   jumpRequest,
   onJumpHandled,
 }: EditorPaneProps) => {
+  const { t } = useTranslation()
   const [cursorPos, setCursorPos] = useState(0)
 
   const markdownCompletions: Completion[] = useMemo(
@@ -58,9 +60,9 @@ export const EditorPane = ({
       { label: '1. ', detail: 'Numbered list', type: 'keyword' },
       { label: '- [ ] ', detail: 'Checklist item', type: 'keyword' },
       { label: '> ', detail: 'Blockquote', type: 'keyword' },
-      { label: '**texto**', detail: 'Bold', type: 'keyword' },
-      { label: '*texto*', detail: 'Italic', type: 'keyword' },
-      { label: '`codigo`', detail: 'Inline code', type: 'keyword' },
+      { label: '**text**', detail: 'Bold', type: 'keyword' },
+      { label: '*text*', detail: 'Italic', type: 'keyword' },
+      { label: '`code`', detail: 'Inline code', type: 'keyword' },
       {
         label: '```ts\n\n```',
         detail: 'TS code block',
@@ -74,7 +76,7 @@ export const EditorPane = ({
         apply: '```mermaid\n\n```',
       },
       { label: '![alt](ruta)', detail: 'Image', type: 'keyword' },
-      { label: '[texto](url)', detail: 'Link', type: 'keyword' },
+      { label: '[text](url)', detail: 'Link', type: 'keyword' },
     ],
     []
   )
@@ -218,8 +220,8 @@ export const EditorPane = ({
   }, [activeHeadingIndex, headingAnchors])
 
   const editorBreadcrumbs = activeHeadingTrail
-    ? `${breadcrumbFile ?? 'Sin archivo seleccionado'} / ${activeHeadingTrail}`
-    : (breadcrumbFile ?? 'Sin archivo seleccionado')
+    ? `${breadcrumbFile ?? t('editor.noActiveFile')} / ${activeHeadingTrail}`
+    : (breadcrumbFile ?? t('editor.noActiveFile'))
 
   const getCurrentBlockRange = () => {
     const view = viewRef.current
@@ -409,7 +411,7 @@ export const EditorPane = ({
     }
 
     const selection = view.state.selection.main
-    const selectedText = view.state.doc.sliceString(selection.from, selection.to) || 'texto'
+    const selectedText = view.state.doc.sliceString(selection.from, selection.to) || 'text'
     const insert = `[${selectedText}](https://)`
     view.dispatch({
       changes: { from: selection.from, to: selection.to, insert },
@@ -451,11 +453,11 @@ export const EditorPane = ({
   }
 
   const slashActions = [
-    { label: 'Heading', run: toggleHeading },
-    { label: 'Bullet List', run: toggleList },
-    { label: 'Checklist', run: convertToChecklist },
-    { label: 'Quote', run: convertToQuote },
-    { label: 'Code Block', run: convertToCodeBlock },
+    { label: t('editor.slashHeading'), run: toggleHeading },
+    { label: t('editor.slashBulletList'), run: toggleList },
+    { label: t('editor.slashChecklist'), run: convertToChecklist },
+    { label: t('editor.slashQuote'), run: convertToQuote },
+    { label: t('editor.slashCodeBlock'), run: convertToCodeBlock },
   ]
 
   useEffect(() => {
@@ -616,14 +618,14 @@ export const EditorPane = ({
                 <input
                   value={emojiQuery}
                   onChange={(event) => setEmojiQuery(event.target.value)}
-                  placeholder="Buscar emoji github..."
+                  placeholder={t('editor.emojiSearchPlaceholder')}
                   className="mb-2 w-full rounded-md border border-canvas-200 px-2 py-1 text-xs text-ink-700 outline-none focus:border-canvas-300"
                   type="text"
                 />
                 <div className="grid max-h-56 grid-cols-2 gap-1 overflow-y-auto pr-1">
                   {filteredRecentEmojiOptions.length > 0 ? (
                     <span className="col-span-2 px-2 pt-1 text-[10px] uppercase tracking-wide text-ink-500">
-                      Recientes
+                      {t('editor.emojiRecent')}
                     </span>
                   ) : null}
                   {filteredRecentEmojiOptions.map((emoji) => (
@@ -639,7 +641,7 @@ export const EditorPane = ({
                   ))}
                   {filteredRecentEmojiOptions.length > 0 ? (
                     <span className="col-span-2 mt-1 px-2 pt-1 text-[10px] uppercase tracking-wide text-ink-500">
-                      Todos
+                      {t('editor.emojiAll')}
                     </span>
                   ) : null}
                   {filteredOtherEmojiOptions.map((emoji) => (
@@ -654,13 +656,13 @@ export const EditorPane = ({
                     </button>
                   ))}
                   {filteredRecentEmojiOptions.length === 0 && filteredOtherEmojiOptions.length === 0 ? (
-                    <span className="col-span-2 px-2 py-3 text-center text-xs text-ink-500">Sin resultados</span>
+                    <span className="col-span-2 px-2 py-3 text-center text-xs text-ink-500">{t('editor.emojiNoResults')}</span>
                   ) : null}
                 </div>
               </div>
             ) : null}
           </div>
-          <span className="ml-auto text-[10px] text-ink-400">⌘⇧D duplicar · ⌘⇧H heading · ⌘⇧L lista · ⌘Space autocomplete</span>
+          <span className="ml-auto text-[10px] text-ink-400">{t('editor.toolbarHint')}</span>
         </div>
         <div className="border-b border-canvas-200 px-3 py-2">
           <p className="truncate text-[11px] tracking-wide text-ink-500" title={editorBreadcrumbs} data-testid="editor-breadcrumbs">

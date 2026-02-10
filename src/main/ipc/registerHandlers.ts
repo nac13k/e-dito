@@ -15,12 +15,18 @@ import { pathToFileURL } from 'node:url'
 
 import {
   clearWorkspaceHistory,
+  getResolvedLanguage,
   getValidLastWorkspace,
   getValidRecentWorkspaces,
+  getLanguagePreference,
   setConfirmExternalLinks,
+  setLanguagePreference,
   setLastWorkspacePath,
   shouldConfirmExternalLinks,
+  type SupportedUiLanguage,
+  type UiLanguagePreference,
 } from '../workspaceConfig.js'
+import { getMainI18n } from '../i18n.js'
 
 type WorkspaceTreeFile = {
   id: string
@@ -544,6 +550,7 @@ const exportMarkdownDocumentsToPdf = async (
   event: Electron.IpcMainInvokeEvent,
   payload: { title: string; documents: ExportMarkdownDocument[]; options?: Partial<ExportOptions> },
 ) => {
+  const i18n = getMainI18n(await getResolvedLanguage())
   const exportOptions: ExportOptions = {
     includeSourcePath: payload.options?.includeSourcePath ?? true,
     includeFileName: payload.options?.includeFileName ?? true,
@@ -551,22 +558,22 @@ const exportMarkdownDocumentsToPdf = async (
   const sourceWindow = getWindowFromEvent(event)
   const result = sourceWindow
     ? await dialog.showSaveDialog(sourceWindow, {
-        title: 'Exportar PDF',
+        title: i18n.export.saveDialogTitle,
         defaultPath: `${payload.title || 'documento'}.pdf`,
         filters: [{ name: 'PDF', extensions: ['pdf'] }],
       })
     : await dialog.showSaveDialog({
-        title: 'Exportar PDF',
+        title: i18n.export.saveDialogTitle,
         defaultPath: `${payload.title || 'documento'}.pdf`,
         filters: [{ name: 'PDF', extensions: ['pdf'] }],
       })
 
   if (result.canceled || !result.filePath) {
-    return 'Exportacion cancelada'
+    return i18n.export.canceled
   }
 
   if (payload.documents.length === 0) {
-    return 'No hay documentos markdown para exportar'
+    return i18n.export.noDocuments
   }
 
   const pdfWindow = new BrowserWindow({
@@ -612,7 +619,7 @@ const exportMarkdownDocumentsToPdf = async (
     await writeFile(result.filePath, pdfBuffer)
     const fileStat = await stat(result.filePath)
     if (fileStat.size <= 0) {
-      return 'No se pudo exportar PDF'
+      return i18n.export.genericError
     }
 
     try {
@@ -621,7 +628,7 @@ const exportMarkdownDocumentsToPdf = async (
       // Ignorar errores de apertura del explorador; el PDF ya fue generado.
     }
 
-    return `PDF exportado en ${result.filePath}`
+    return i18n.export.successPath(result.filePath)
   } finally {
     pdfWindow.destroy()
   }
@@ -629,6 +636,11 @@ const exportMarkdownDocumentsToPdf = async (
 
 type RegisterIpcHandlersOptions = {
   onWorkspaceHistoryChange?: () => void
+  getI18nState?: () => {
+    language: SupportedUiLanguage
+    preference: UiLanguagePreference
+  }
+  setI18nPreference?: (preference: UiLanguagePreference) => Promise<void>
 }
 
 export const registerIpcHandlers = (options: RegisterIpcHandlersOptions = {}) => {
@@ -637,6 +649,26 @@ export const registerIpcHandlers = (options: RegisterIpcHandlersOptions = {}) =>
   }
 
   ipcMain.handle('app:ping', async () => 'pong')
+
+  ipcMain.handle('i18n:get-state', async () => {
+    const state = options.getI18nState?.()
+    if (state) {
+      return state
+    }
+
+    const preference = await getLanguagePreference()
+    const language = await getResolvedLanguage()
+    return { language, preference }
+  })
+
+  ipcMain.handle('i18n:set-preference', async (_event, preference: UiLanguagePreference) => {
+    if (options.setI18nPreference) {
+      await options.setI18nPreference(preference)
+      return
+    }
+
+    await setLanguagePreference(preference)
+  })
 
   ipcMain.handle('workspace:last:get', async () => {
     return getValidLastWorkspace()
@@ -657,14 +689,15 @@ export const registerIpcHandlers = (options: RegisterIpcHandlersOptions = {}) =>
   })
 
   ipcMain.handle('workspace:select', async (event) => {
+    const i18n = getMainI18n(await getResolvedLanguage())
     const win = getWindowFromEvent(event)
     const result = win
       ? await dialog.showOpenDialog(win, {
-          title: 'Abrir proyecto',
+          title: i18n.dialogs.openWorkspaceTitle,
           properties: ['openDirectory', 'createDirectory'],
         })
       : await dialog.showOpenDialog({
-          title: 'Abrir proyecto',
+          title: i18n.dialogs.openWorkspaceTitle,
           properties: ['openDirectory', 'createDirectory'],
         })
 
@@ -708,10 +741,15 @@ export const registerIpcHandlers = (options: RegisterIpcHandlersOptions = {}) =>
   ipcMain.handle(
     'workspace:file:create',
     async (_event, payload: { workspacePath: string; folderPath: string; baseName?: string }) => {
+      const i18n = getMainI18n(await getResolvedLanguage())
       ensureInsideWorkspace(payload.workspacePath, payload.folderPath)
       await mkdir(payload.folderPath, { recursive: true })
-      const filePath = await nextAvailablePath(payload.folderPath, payload.baseName || 'nuevo-documento', '.md')
-      await writeFile(filePath, '# Nuevo documento\n', 'utf-8')
+      const filePath = await nextAvailablePath(
+        payload.folderPath,
+        payload.baseName || i18n.workspace.newDocumentBase,
+        '.md'
+      )
+      await writeFile(filePath, i18n.workspace.newDocumentTitle, 'utf-8')
       return filePath
     }
   )
@@ -719,8 +757,9 @@ export const registerIpcHandlers = (options: RegisterIpcHandlersOptions = {}) =>
   ipcMain.handle(
     'workspace:folder:create',
     async (_event, payload: { workspacePath: string; parentPath: string; name?: string }) => {
+      const i18n = getMainI18n(await getResolvedLanguage())
       ensureInsideWorkspace(payload.workspacePath, payload.parentPath)
-      const baseName = payload.name || 'nueva-carpeta'
+      const baseName = payload.name || i18n.workspace.newFolderBase
       const folderPath = await nextAvailablePath(payload.parentPath, baseName, '')
       await mkdir(folderPath, { recursive: true })
       return folderPath
@@ -735,6 +774,7 @@ export const registerIpcHandlers = (options: RegisterIpcHandlersOptions = {}) =>
   ipcMain.handle(
     'workspace:file:duplicate',
     async (_event, payload: { workspacePath: string; sourcePath: string; destinationFolderPath: string }) => {
+      const i18n = getMainI18n(await getResolvedLanguage())
       ensureInsideWorkspace(payload.workspacePath, payload.sourcePath)
       ensureInsideWorkspace(payload.workspacePath, payload.destinationFolderPath)
 
@@ -742,7 +782,7 @@ export const registerIpcHandlers = (options: RegisterIpcHandlersOptions = {}) =>
       const sourceName = basename(payload.sourcePath, extension)
       const destinationPath = await nextAvailablePath(
         payload.destinationFolderPath,
-        `${sourceName}-copia`,
+        `${sourceName}-${i18n.workspace.duplicateSuffix}`,
         extension || '.md'
       )
       await copyFile(payload.sourcePath, destinationPath)
@@ -763,6 +803,8 @@ export const registerIpcHandlers = (options: RegisterIpcHandlersOptions = {}) =>
     }
 
     const confirmExternal = await shouldConfirmExternalLinks()
+    const language = await getResolvedLanguage()
+    const i18n = getMainI18n(language)
     if (!confirmExternal) {
       await shell.openExternal(url)
       return { opened: true }
@@ -772,24 +814,24 @@ export const registerIpcHandlers = (options: RegisterIpcHandlersOptions = {}) =>
     const result = win
       ? await dialog.showMessageBox(win, {
           type: 'question',
-          title: 'Abrir enlace externo',
-          message: 'Este enlace se abrira en tu navegador por defecto.',
+          title: i18n.dialogs.openExternalTitle,
+          message: i18n.dialogs.openExternalMessage,
           detail: url,
-          buttons: ['Abrir enlace', 'Cancelar'],
+          buttons: [i18n.dialogs.openExternalConfirm, i18n.dialogs.openExternalCancel],
           defaultId: 0,
           cancelId: 1,
-          checkboxLabel: 'No volver a preguntar',
+          checkboxLabel: i18n.dialogs.openExternalDontAsk,
           checkboxChecked: false,
         })
       : await dialog.showMessageBox({
           type: 'question',
-          title: 'Abrir enlace externo',
-          message: 'Este enlace se abrira en tu navegador por defecto.',
+          title: i18n.dialogs.openExternalTitle,
+          message: i18n.dialogs.openExternalMessage,
           detail: url,
-          buttons: ['Abrir enlace', 'Cancelar'],
+          buttons: [i18n.dialogs.openExternalConfirm, i18n.dialogs.openExternalCancel],
           defaultId: 0,
           cancelId: 1,
-          checkboxLabel: 'No volver a preguntar',
+          checkboxLabel: i18n.dialogs.openExternalDontAsk,
           checkboxChecked: false,
         })
 
@@ -816,7 +858,8 @@ export const registerIpcHandlers = (options: RegisterIpcHandlersOptions = {}) =>
       })
     } catch (error) {
       console.error('[export:pdf] fallo en exportacion', error)
-      return 'No se pudo exportar PDF'
+      const i18n = getMainI18n(await getResolvedLanguage())
+      return i18n.export.genericError
     }
   })
 
@@ -829,7 +872,8 @@ export const registerIpcHandlers = (options: RegisterIpcHandlersOptions = {}) =>
       return await exportMarkdownDocumentsToPdf(event, payload)
     } catch (error) {
       console.error('[export:pdf-folder] fallo en exportacion', error)
-      return 'No se pudo exportar PDF de carpeta'
+      const i18n = getMainI18n(await getResolvedLanguage())
+      return i18n.export.folderError
     }
   })
 
@@ -842,7 +886,8 @@ export const registerIpcHandlers = (options: RegisterIpcHandlersOptions = {}) =>
       return await exportMarkdownDocumentsToPdf(event, payload)
     } catch (error) {
       console.error('[export:pdf-project] fallo en exportacion', error)
-      return 'No se pudo exportar PDF de proyecto'
+      const i18n = getMainI18n(await getResolvedLanguage())
+      return i18n.export.projectError
     }
   })
 

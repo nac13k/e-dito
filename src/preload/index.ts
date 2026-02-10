@@ -29,6 +29,25 @@ const toSerializable = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as 
 
 const api = {
   ping: () => ipcRenderer.invoke('app:ping') as Promise<string>,
+  getI18nState: () =>
+    ipcRenderer.invoke('i18n:get-state') as Promise<{
+      language: 'es-MX' | 'en-US'
+      preference: 'system' | 'es-MX' | 'en-US'
+    }>,
+  setI18nPreference: (preference: 'system' | 'es-MX' | 'en-US') =>
+    ipcRenderer.invoke('i18n:set-preference', preference) as Promise<void>,
+  onI18nChanged: (callback: (state: { language: 'es-MX' | 'en-US'; preference: 'system' | 'es-MX' | 'en-US' }) => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      state: { language: 'es-MX' | 'en-US'; preference: 'system' | 'es-MX' | 'en-US' }
+    ) => {
+      callback(state)
+    }
+    ipcRenderer.on('i18n:changed', handler)
+    return () => {
+      ipcRenderer.removeListener('i18n:changed', handler)
+    }
+  },
   getLastWorkspace: () => ipcRenderer.invoke('workspace:last:get') as Promise<string | null>,
   setLastWorkspace: (workspacePath: string | null) =>
     ipcRenderer.invoke('workspace:last:set', workspacePath) as Promise<void>,

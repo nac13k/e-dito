@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react'
+import { useTranslation } from 'react-i18next'
 
 type AppShellProps = {
   header: ReactNode
@@ -19,6 +20,7 @@ export const AppShell = ({
   onCloseDrawer,
   statusBar,
 }: AppShellProps) => {
+  const { t } = useTranslation()
   return (
     <div className="relative h-screen overflow-hidden bg-canvas-50 text-ink-900">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.8),_transparent_55%)]" />
@@ -49,7 +51,7 @@ export const AppShell = ({
           <button
             className="absolute inset-0 bg-ink-900/20"
             onClick={onCloseDrawer}
-            aria-label="Cerrar panel"
+            aria-label={t('appShell.closePanel')}
             type="button"
           />
           <aside className="absolute right-0 top-0 h-full w-[360px] border-l border-canvas-200 bg-white/95 p-4 shadow-soft backdrop-blur">

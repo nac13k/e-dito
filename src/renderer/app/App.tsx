@@ -1,6 +1,7 @@
 import MarkdownIt from 'markdown-it'
 import * as markdownItEmoji from 'markdown-it-emoji'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { EditorPane } from '@/features/editor/EditorPane'
 import { AssetPreviewPane } from '@/features/editor/AssetPreviewPane'
@@ -110,6 +111,7 @@ const emojiPlugin = (
 ).full
 
 const App = () => {
+  const { t } = useTranslation()
   const [docCount, setDocCount] = useState(0)
   const [markdown, setMarkdown] = useState('')
   const [previewMarkdown, setPreviewMarkdown] = useState('')
@@ -126,7 +128,7 @@ const App = () => {
   const [folderPaths, setFolderPaths] = useState<Record<string, string>>({})
   const [exportIncludeSourcePath, setExportIncludeSourcePath] = useState(false)
   const [exportIncludeFileName, setExportIncludeFileName] = useState(false)
-  const [exportStatus, setExportStatus] = useState('Sin exportaciones')
+  const [exportStatus, setExportStatus] = useState(() => t('exportStatus.none'))
   const [jumpRequest, setJumpRequest] = useState<{ text: string; nonce: number } | null>(null)
   const [activeEditBlockIndex, setActiveEditBlockIndex] = useState<number | null>(null)
   const [editSnapshotBlocks, setEditSnapshotBlocks] = useState<string[] | null>(null)
@@ -428,7 +430,7 @@ const App = () => {
 
   const previewBreadcrumbs = useMemo(() => {
     if (!activeFileId) {
-      return 'Sin archivo seleccionado'
+      return t('preview.noSelectedFile')
     }
     const currentMarkdown =
       activeEditBlockIndex !== null && editSnapshotBlocks
@@ -438,15 +440,15 @@ const App = () => {
         : markdown
     const headingTrail = buildHeadingTrail(currentMarkdown, activeEditBlockIndex ?? 0)
     return headingTrail.length > 0 ? `${activeFileId} / ${headingTrail.join(' / ')}` : activeFileId
-  }, [activeEditBlockIndex, activeFileId, editBlockDraft, editSnapshotBlocks, markdown])
+  }, [activeEditBlockIndex, activeFileId, editBlockDraft, editSnapshotBlocks, markdown, t])
 
   const gitStatus = useMemo(() => {
     if (gitSyncCount === 0) {
-      return 'Listo para sincronizar'
+      return t('git.readyToSync')
     }
 
-    return 'Sincronizado'
-  }, [gitSyncCount])
+    return t('git.synced')
+  }, [gitSyncCount, t])
 
   const findFolderByFile = (fileId: string | null) => {
     if (!fileId) {
@@ -568,7 +570,7 @@ const App = () => {
     const createdPath = await window.api.createWorkspaceFile({
       workspacePath,
       folderPath: targetFolderPath,
-      baseName: 'documento',
+      baseName: t('workspace.defaultDocumentBase'),
     })
 
     const createdId = toFileId(workspacePath, createdPath)
@@ -701,7 +703,7 @@ const App = () => {
   const handleExportFile = async () => {
     const activePath = activeFileId ? filePaths[activeFileId] : null
     if (!activeFileId || !activePath) {
-      setExportStatus('Selecciona un archivo para exportar')
+      setExportStatus(t('exportStatus.selectFile'))
       return
     }
 
@@ -710,7 +712,7 @@ const App = () => {
       .find((file) => file.id === activeFileId)?.name
 
     const response = await window.api.exportPdfFile({
-      title: toDisplayName(activeName || 'documento'),
+      title: toDisplayName(activeName || t('commands.newDocument')),
       markdown,
       sourcePath: activePath,
       options: {
@@ -723,14 +725,14 @@ const App = () => {
 
   const handleExportFolder = async () => {
     if (!workspacePath || folders.length === 0) {
-      setExportStatus('No hay carpeta cargada para exportar')
+      setExportStatus(t('exportStatus.noFolderLoaded'))
       return
     }
 
     const activeFolderId = findFolderByFile(activeFileId)?.id ?? folders[0]?.id
     const folder = folders.find((entry) => entry.id === activeFolderId)
     if (!folder) {
-      setExportStatus('No hay carpeta disponible para exportar')
+      setExportStatus(t('exportStatus.noFolderAvailable'))
       return
     }
 
@@ -756,7 +758,7 @@ const App = () => {
 
     const filteredDocuments = documents.filter((document) => document !== null)
     if (filteredDocuments.length === 0) {
-      setExportStatus('No hay archivos markdown para exportar en la carpeta')
+      setExportStatus(t('exportStatus.noMarkdownInFolder'))
       return
     }
 
@@ -773,7 +775,7 @@ const App = () => {
 
   const handleExportProject = async () => {
     if (!workspacePath || folders.length === 0) {
-      setExportStatus('No hay proyecto cargado para exportar')
+      setExportStatus(t('exportStatus.noProjectLoaded'))
       return
     }
 
@@ -800,7 +802,7 @@ const App = () => {
 
     const filteredDocuments = documents.filter((document) => document !== null)
     if (filteredDocuments.length === 0) {
-      setExportStatus('No hay archivos markdown para exportar en el proyecto')
+      setExportStatus(t('exportStatus.noMarkdownInProject'))
       return
     }
 
@@ -1016,8 +1018,8 @@ const App = () => {
   const fileCommands = folders.flatMap((folder) =>
     folder.files.map((file) => ({
       id: `open-file-${file.id.replace(/[^a-zA-Z0-9-_]/g, '-')}`,
-      label: `Abrir archivo: ${file.name}`,
-      category: 'Archivos',
+      label: t('commands.openFile', { name: file.name }),
+      category: t('commands.categories.files'),
       aliases: [file.name, folder.name, file.id],
       onRun: () => void handleSelectFile(file.id),
     }))
@@ -1026,22 +1028,22 @@ const App = () => {
   const commands = [
     {
       id: 'toggle-view',
-      label: viewMode === 'editor' ? 'Cambiar a Preview' : 'Cambiar a Editor',
-      category: 'Editor',
+      label: viewMode === 'editor' ? t('commands.toggleToPreview') : t('commands.toggleToEditor'),
+      category: t('commands.categories.editor'),
       aliases: ['preview', 'vista', 'editor'],
       onRun: toggleView,
     },
     {
       id: 'theme-light',
-      label: 'Tema Claro',
-      category: 'Apariencia',
+      label: t('commands.lightTheme'),
+      category: t('commands.categories.appearance'),
       aliases: ['light', 'claro', 'tema'],
       onRun: () => setTheme('light'),
     },
     {
       id: 'theme-dark',
-      label: 'Tema Oscuro',
-      category: 'Apariencia',
+      label: t('commands.darkTheme'),
+      category: t('commands.categories.appearance'),
       aliases: ['dark', 'oscuro', 'tema'],
       onRun: () => {
         setTheme('dark')
@@ -1050,8 +1052,8 @@ const App = () => {
     },
     {
       id: 'theme-load',
-      label: 'Cargar tema JSON',
-      category: 'Apariencia',
+      label: t('commands.loadThemeJson'),
+      category: t('commands.categories.appearance'),
       aliases: ['json', 'tema', 'colores'],
       onRun: async () => {
     const loaded = await window.api.loadTheme()
@@ -1065,57 +1067,57 @@ const App = () => {
     },
     {
       id: 'open-workspace',
-      label: 'Abrir workspace',
-      category: 'Workspace',
+      label: t('commands.openWorkspace'),
+      category: t('commands.categories.workspace'),
       aliases: ['proyecto', 'abrir carpeta', 'workspace'],
       onRun: () => void selectWorkspace(),
     },
     {
       id: 'new-doc',
-      label: 'Nuevo documento',
-      category: 'Editor',
+      label: t('commands.newDocument'),
+      category: t('commands.categories.editor'),
       aliases: ['nuevo archivo', 'documento'],
       onRun: () => createDoc(),
     },
     {
       id: 'open-git',
-      label: 'Abrir Git',
-      category: 'Git',
+      label: t('commands.openGit'),
+      category: t('commands.categories.git'),
       aliases: ['git panel', 'repositorio'],
       onRun: () => openTool('git'),
     },
     {
       id: 'open-export',
-      label: 'Abrir Export',
-      category: 'Export',
+      label: t('commands.openExport'),
+      category: t('commands.categories.export'),
       aliases: ['exportar', 'pdf', 'export panel'],
       onRun: () => openTool('export'),
     },
     {
       id: 'sync-git',
-      label: 'Sincronizar Git',
-      category: 'Git',
+      label: t('commands.syncGit'),
+      category: t('commands.categories.git'),
       aliases: ['sync', 'push', 'pull'],
       onRun: handleSync,
     },
     {
       id: 'export-pdf',
-      label: 'Exportar PDF',
-      category: 'Export',
+      label: t('commands.exportPdf'),
+      category: t('commands.categories.export'),
       aliases: ['pdf', 'exportar documento'],
       onRun: () => void handleExportFile(),
     },
     {
       id: 'export-folder',
-      label: 'Exportar carpeta',
-      category: 'Export',
+      label: t('commands.exportFolder'),
+      category: t('commands.categories.export'),
       aliases: ['carpeta', 'exportar carpeta'],
       onRun: () => void handleExportFolder(),
     },
     {
       id: 'export-project',
-      label: 'Exportar proyecto',
-      category: 'Export',
+      label: t('commands.exportProject'),
+      category: t('commands.categories.export'),
       aliases: ['proyecto', 'exportar proyecto'],
       onRun: () => void handleExportProject(),
     },
@@ -1134,7 +1136,7 @@ const App = () => {
           </div>
           <div className="flex flex-wrap items-center gap-4">
             <div className="rounded-full bg-canvas-100 px-3 py-1 text-xs text-ink-600">
-              Documentos:{' '}
+              {t('header.documents')}:{' '}
               <span data-testid="doc-count" className="font-semibold text-ink-800">
                 {docCount}
               </span>
@@ -1158,7 +1160,7 @@ const App = () => {
                 .createWorkspaceFolder({
                   workspacePath,
                   parentPath: workspacePath,
-                  name: 'carpeta',
+                  name: t('workspace.defaultFolderBase'),
                 })
                 .then(() => loadWorkspaceTree(workspacePath, activeFileId))
             }}
@@ -1229,10 +1231,10 @@ const App = () => {
         !workspacePath ? (
           <section className="flex h-full items-center justify-center border-l border-canvas-200" style={{ background: 'var(--editor-bg)' }}>
             <div className="max-w-md space-y-3 px-6 text-center">
-              <h2 className="text-lg font-semibold text-ink-900">Sin workspace abierto</h2>
-              <p className="text-sm text-ink-600">Abre una carpeta para empezar a editar y previsualizar documentos.</p>
+              <h2 className="text-lg font-semibold text-ink-900">{t('workspace.noWorkspace')}</h2>
+              <p className="text-sm text-ink-600">{t('workspace.openWorkspaceDescription')}</p>
               <Button size="sm" onClick={() => void selectWorkspace()}>
-                Abrir workspace
+                {t('workspace.openWorkspace')}
               </Button>
             </div>
           </section>
@@ -1383,10 +1385,10 @@ const App = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-xs uppercase tracking-[0.24em] text-ink-400">
-                Herramientas
+                {t('toolDrawer.title')}
               </p>
               <h2 className="text-lg font-semibold text-ink-900">
-                {activeTool === 'git' ? 'Git' : 'Export'}
+                {activeTool === 'git' ? t('commands.categories.git') : t('commands.categories.export')}
               </h2>
             </div>
             <button
@@ -1394,7 +1396,7 @@ const App = () => {
               onClick={closeDrawer}
               type="button"
             >
-              Cerrar
+              {t('common.close')}
             </button>
           </div>
           {activeTool === 'git' ? (
@@ -1418,16 +1420,16 @@ const App = () => {
       statusBar={
         <>
           <div className="flex items-center gap-3 text-xs text-ink-600">
-            <span className="rounded-full bg-canvas-100 px-3 py-1">main · limpio</span>
+            <span className="rounded-full bg-canvas-100 px-3 py-1">{t('git.cleanBranch')}</span>
             <span data-testid="git-status">{gitStatus}</span>
-            <span className="text-ink-400">Cmd/Ctrl + P</span>
+            <span className="text-ink-400">{t('statusBar.shortcutOpen')}</span>
           </div>
           <div className="flex items-center gap-2">
             <button
               className="rounded-full border border-canvas-200 px-3 py-1 text-xs text-ink-600 hover:border-ink-400"
               onClick={() => openTool('git')}
               type="button"
-              aria-label="Abrir Git"
+              aria-label={t('statusBar.openGit')}
               data-testid="tool-git"
             >
               Git
@@ -1436,7 +1438,7 @@ const App = () => {
               className="rounded-full border border-canvas-200 px-3 py-1 text-xs text-ink-600 hover:border-ink-400"
               onClick={() => openTool('export')}
               type="button"
-              aria-label="Abrir Export"
+              aria-label={t('statusBar.openExport')}
               data-testid="tool-export"
             >
               Export

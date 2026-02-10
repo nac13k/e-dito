@@ -5,13 +5,53 @@ import { dirname, join } from 'node:path'
 const WORKSPACE_CONFIG_PATH = join(app.getPath('userData'), 'workspace.json')
 const RECENT_WORKSPACES_LIMIT = 10
 
+export const SUPPORTED_UI_LANGUAGES = ['es-MX', 'en-US'] as const
+export type SupportedUiLanguage = (typeof SUPPORTED_UI_LANGUAGES)[number]
+export type UiLanguagePreference = SupportedUiLanguage | 'system'
+
 export type WorkspaceConfig = {
   lastWorkspacePath: string | null
   recentWorkspacePaths: string[]
   confirmExternalLinks: boolean
+  languagePreference: UiLanguagePreference
 }
 
 const normalizePath = (value: string) => value.trim()
+
+const normalizeLanguagePreference = (value: unknown): UiLanguagePreference => {
+  if (value === 'system') {
+    return 'system'
+  }
+
+  if (typeof value === 'string') {
+    const direct = SUPPORTED_UI_LANGUAGES.find((language) => language === value)
+    if (direct) {
+      return direct
+    }
+  }
+
+  return 'system'
+}
+
+export const mapLocaleToSupportedLanguage = (locale: string | null | undefined): SupportedUiLanguage => {
+  const normalized = (locale ?? '').toLowerCase()
+  if (normalized.startsWith('es')) {
+    return 'es-MX'
+  }
+  return 'en-US'
+}
+
+const getSystemLanguage = (): SupportedUiLanguage => {
+  const preferred = app.getPreferredSystemLanguages()[0] ?? app.getLocale()
+  return mapLocaleToSupportedLanguage(preferred)
+}
+
+export const resolveLanguageFromPreference = (preference: UiLanguagePreference): SupportedUiLanguage => {
+  if (preference === 'system') {
+    return getSystemLanguage()
+  }
+  return preference
+}
 
 const sanitizeRecent = (value: unknown) => {
   if (!Array.isArray(value)) {
@@ -59,12 +99,14 @@ export const readWorkspaceConfig = async (): Promise<WorkspaceConfig> => {
       recentWorkspacePaths: sanitizeRecent(parsed.recentWorkspacePaths),
       confirmExternalLinks:
         typeof parsed.confirmExternalLinks === 'boolean' ? parsed.confirmExternalLinks : true,
+      languagePreference: normalizeLanguagePreference(parsed.languagePreference),
     }
   } catch {
     return {
       lastWorkspacePath: null,
       recentWorkspacePaths: [],
       confirmExternalLinks: true,
+      languagePreference: 'system',
     }
   }
 }
@@ -118,6 +160,7 @@ export const setLastWorkspacePath = async (workspacePath: string | null) => {
     lastWorkspacePath: nextPath,
     recentWorkspacePaths: nextRecent,
     confirmExternalLinks: config.confirmExternalLinks,
+    languagePreference: config.languagePreference,
   }
 
   await writeWorkspaceConfig(nextConfig)
@@ -129,6 +172,7 @@ export const clearWorkspaceHistory = async () => {
     lastWorkspacePath: null,
     recentWorkspacePaths: [],
     confirmExternalLinks: true,
+    languagePreference: 'system',
   }
 
   await writeWorkspaceConfig(emptyConfig)
@@ -148,4 +192,24 @@ export const setConfirmExternalLinks = async (value: boolean) => {
   }
   await writeWorkspaceConfig(nextConfig)
   return nextConfig
+}
+
+export const getLanguagePreference = async () => {
+  const config = await readWorkspaceConfig()
+  return config.languagePreference
+}
+
+export const setLanguagePreference = async (preference: UiLanguagePreference) => {
+  const config = await readWorkspaceConfig()
+  const nextConfig: WorkspaceConfig = {
+    ...config,
+    languagePreference: preference,
+  }
+  await writeWorkspaceConfig(nextConfig)
+  return nextConfig
+}
+
+export const getResolvedLanguage = async () => {
+  const preference = await getLanguagePreference()
+  return resolveLanguageFromPreference(preference)
 }
